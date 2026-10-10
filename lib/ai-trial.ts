@@ -1,4 +1,5 @@
 // أداة ذكاء اصطناعي تجريبية لتوليد أفكار شعارات كصور (للاستلهام فقط — ليست ملفات نهائية)
+import { readMeaning } from "./logo/name-motifs";
 // تستخدم Pollinations.ai المجانية بلا مفتاح. للإنتاج استبدلها بـ Recraft (SVG متجهي) عبر الخادم.
 
 const INDUSTRY_EN: Record<string, string> = {
@@ -14,7 +15,7 @@ const VARIANTS = [
   "abstract symbol", "lettermark monogram", "emblem badge", "negative space icon", "line art icon", "mascot-free pictorial mark",
 ];
 
-export interface AiTrialInput { name: string; nameEn?: string; industry: string; sub?: string; style?: string; colors: string[] }
+export interface AiTrialInput { name: string; nameEn?: string; industry: string; sub?: string; style?: string; colors: string[]; ideas?: string[] }
 
 export function aiTrialPrompt(i: AiTrialInput, variant: number): string {
   const what = INDUSTRY_EN[i.sub ?? ""] ?? INDUSTRY_EN[i.industry] ?? i.industry;
@@ -22,6 +23,7 @@ export function aiTrialPrompt(i: AiTrialInput, variant: number): string {
   return [
     `${STYLE_EN[i.style ?? ""] ?? "modern"} flat vector logo, ${VARIANTS[variant % VARIANTS.length]}`,
     `for a ${what} brand called "${brand}"`,
+    ...(i.ideas?.length ? [`symbol inspired by the meaning of the name: ${i.ideas.join(" and ")}`] : []),
     `color palette ${i.colors.join(", ")}`,
     "centered on plain white background, simple shapes, high contrast, professional brand identity, no mockup, no extra text",
   ].join(", ");
@@ -34,5 +36,15 @@ export function aiTrialUrls(i: AiTrialInput, seed: number, n = 4, size = 512): {
     return { prompt, url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${q}` };
   });
 }
+
+
+const IDEA_EN: Record<string, string> = {
+  flower: "a flower", palm: "a palm tree", falcon: "a falcon", mountain: "a mountain peak", sun: "the sun", crescent: "a crescent moon", spark: "a star",
+  tree: "a tree", leafpair: "leaves", crown: "a crown", key: "a key", arch: "an arched doorway", tower: "a tower", cloud: "a cloud", heart: "a heart",
+  anchor: "an anchor", waves: "sea waves", diamond: "a gem", shield: "a shield", book: "a book", comb: "honeycomb", flame: "a flame", drop: "a water drop",
+  chevrons: "speed arrows", route: "a winding road", wheat: "wheat", bean: "a coffee bean",
+};
+/** أفكار الرمز من معنى الاسم (زهرة ← flower) لتوجيه الأداة التجريبية */
+export const nameIdeas = (name: string, nameEn?: string) => readMeaning(name, nameEn).map((m) => IDEA_EN[m.motif]).filter(Boolean);
 
 export const AI_TRIAL_NOTE = "تجريبي: صور نقطية للاستلهام فقط، قد تحتوي أخطاء في الحروف، وليست ملفات طباعة نهائية. المزود: Pollinations.ai (مجاني بدون مفتاح).";

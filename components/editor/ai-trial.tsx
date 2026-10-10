@@ -3,7 +3,7 @@
 import * as React from "react";
 import { FlaskConical, RefreshCw } from "lucide-react";
 import { useMenu } from "@/store/menu-store";
-import { aiTrialUrls, AI_TRIAL_NOTE } from "@/lib/ai-trial";
+import { aiTrialUrls, AI_TRIAL_NOTE, nameIdeas } from "@/lib/ai-trial";
 import { compressImage } from "@/lib/image";
 import { Button } from "../ui/primitives";
 
@@ -56,6 +56,7 @@ export function AiLogoTrial() {
   const items = seed === null ? [] : aiTrialUrls({
     name: doc.venue.name, nameEn: doc.venue.nameEn, industry: "food", sub: doc.venue.type, style: "minimal",
     colors: [p.primary.hex, p.secondary.hex, p.accent.hex],
+    ideas: nameIdeas(doc.venue.name, doc.venue.nameEn),
   }, seed, 4, 384);
   return (
     <div className="rounded-xl border border-dashed border-amber-400/80 bg-amber-50/50 p-3">

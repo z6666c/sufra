@@ -95,7 +95,7 @@ export interface LogoShape {
 
 export type LogoFamily =
   | "grid" | "star" | "arcs" | "facets" | "petals" | "bars" | "kufic"
-  | "letterBox" | "letterRing" | "monogram" | "seal" | "motif" | "motifBox" | "motifLetter" | "compose";
+  | "letterBox" | "letterRing" | "monogram" | "seal" | "motif" | "motifBox" | "motifLetter" | "compose" | "nameDuo";
 
 export interface LogoConcept {
   id: string;

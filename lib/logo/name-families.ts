@@ -3,6 +3,7 @@ import type { LogoShape, ShapeRole } from "../types";
 import { type RNG, chance, int, pick, range } from "../random";
 import type { FamilyResult } from "./families";
 import { MOTIFS, Pen, drawMotif, motifsFor } from "./motifs";
+import { readMeaning, type NameMeaning } from "./name-motifs";
 import { annularSector, circle, polar, polygon, rect } from "./geometry";
 
 export interface NameCtx {
@@ -14,6 +15,8 @@ export interface NameCtx {
   pairAr?: string;
   industry: string;
   sub?: string;
+  /** معاني كلمات الاسم المربوطة برموز (زهرة ← وردة…) */
+  meanings: NameMeaning[];
 }
 
 const AR_SKIP = new Set(["شركة", "مؤسسة", "مطعم", "مقهى", "كافيه", "كوفي", "محمصة", "مكتب", "متجر", "مركز", "مجموعة", "دار", "بيت", "مخبز", "حلويات", "عيادة"]);
@@ -23,7 +26,7 @@ const isAr = (s: string) => /[؀-ۿ]/.test(s);
 
 /** قراءة الاسم: تجاوز «ال» التعريف والكلمات العامة لاستخراج الحرف المميز */
 export function readName(brandName: string, brandNameEn: string | undefined, industry: string, sub?: string): NameCtx {
-  const ctx: NameCtx = { nameAr: brandName.trim(), nameEn: brandNameEn?.trim() || undefined, industry, sub };
+  const ctx: NameCtx = { nameAr: brandName.trim(), nameEn: brandNameEn?.trim() || undefined, industry, sub, meanings: readMeaning(brandName, brandNameEn) };
   const arWords = brandName.trim().split(/\s+/).filter((w) => isAr(w));
   const sig = arWords.filter((w) => !AR_SKIP.has(w));
   const pickAr = (w: string) => {
@@ -158,7 +161,7 @@ export function seal(rng: RNG, ctx: NameCtx): FamilyResult {
   [128, 90, 52].forEach((a, i) => shapes.push({ d: circle(...polar(50, 50, 41, a), i === 1 ? 2.6 : 1.8), role: "primary", knock: true }));
   const centerMotif = chance(rng, 0.55);
   if (centerMotif) {
-    const ids = motifsFor(ctx.industry, ctx.sub);
+    const ids = ctx.meanings.length ? ctx.meanings.map((m) => m.motif) : motifsFor(ctx.industry, ctx.sub);
     const id = pick(rng, ids);
     shapes.push(...drawMotif(id, new Pen(50, 50, 0.5), rng));
   } else {
@@ -170,11 +173,13 @@ export function seal(rng: RNG, ctx: NameCtx): FamilyResult {
 
 /** 5) رمز النشاط وحده بأسلوب متغير */
 export function motif(rng: RNG, ctx: NameCtx): FamilyResult {
-  const id = pick(rng, motifsFor(ctx.industry, ctx.sub));
+  const named = ctx.meanings.length && chance(rng, 0.6) ? pick(rng, ctx.meanings) : null;
+  const id = named?.motif ?? pick(rng, motifsFor(ctx.industry, ctx.sub));
   const m = MOTIFS[id];
   const tilt = chance(rng, 0.3) ? pick(rng, [-12, 12, -20, 20]) : 0;
   let shapes = drawMotif(id, new Pen(50, 50, range(rng, 0.9, 0.98), tilt), rng);
   if (chance(rng, 0.4)) shapes = shapes.map((s, i) => (!s.knock && i % 2 ? { ...s, role: s.role === "primary" ? ("secondary" as ShapeRole) : s.role } : s));
+  if (named) return { shapes, title: `${m.label} من «${named.word}»`, rationale: `كلمة «${named.word}» في اسمك تعني ${named.label}، فتحولت إلى رمز: ${m.meaning}.` };
   return { shapes, title: m.label, rationale: `${m.meaning}. صُمم خصيصاً لقطاع النشاط بعيداً عن الأيقونات المستهلكة.` };
 }
 
@@ -200,5 +205,34 @@ export function motifLetter(rng: RNG, ctx: NameCtx): FamilyResult {
   return { shapes, title: `${MOTIFS[id].label} + «${ch}»`, rationale: `يجمع رمز النشاط (${MOTIFS[id].label}) مع الحرف الأول «${ch}» من الاسم في تكوين واحد؛ ${MOTIFS[id].meaning}.` };
 }
 
-export const NAME_FAMILIES = { letterBox, letterRing, monogram, seal, motif, motifBox, motifLetter };
+/** 8) معنى الاسم + رمز النشاط في علامة واحدة */
+export function nameDuo(rng: RNG, ctx: NameCtx): FamilyResult {
+  const named = ctx.meanings.length ? pick(rng, ctx.meanings) : null;
+  const industryIds = motifsFor(ctx.industry, ctx.sub).filter((id) => id !== named?.motif);
+  const act = pick(rng, industryIds.length ? industryIds : ["spark"]);
+  if (!named) {
+    // بدون معنى في الاسم: رمز النشاط مع الحرف الأول
+    return motifLetter(rng, ctx);
+  }
+  const layout = pick(rng, ["badge", "badge", "inside"] as const);
+  const shapes: LogoShape[] = [];
+  if (layout === "badge") {
+    // الرمز الرئيسي من الاسم، ورمز النشاط داخل شارة صغيرة يفصلها خط سالب
+    shapes.push(...drawMotif(named.motif, new Pen(44, 44, 0.8), rng));
+    shapes.push({ d: circle(75, 75, 22), role: "primary", knock: true });
+    shapes.push({ d: circle(75, 75, 18), role: "accent", layer: 1 });
+    drawMotif(act, new Pen(75, 75, 0.27), rng).forEach((s) => { if (!s.knock) shapes.push({ ...s, role: "primary", layer: 1, stroke: s.stroke ? Math.max(1.4, s.stroke * 0.5) : undefined }); });
+  } else {
+    // رمز النشاط مقتطع داخل رمز الاسم
+    shapes.push(...drawMotif(named.motif, new Pen(50, 50, 1), rng).map((s) => (s.knock ? { ...s, knock: false, layer: 1 as const, role: "accent" as ShapeRole } : s)));
+    drawMotif(act, new Pen(50, 52, 0.36), rng).forEach((s) => { if (!s.knock) shapes.push({ ...s, knock: true }); });
+  }
+  return {
+    shapes,
+    title: `${MOTIFS[named.motif].label} + ${MOTIFS[act].label}`,
+    rationale: `يجمع معنى اسمك («${named.word}» ← ${named.label}) مع رمز نشاطك (${MOTIFS[act].label}) في علامة واحدة؛ ${MOTIFS[named.motif].meaning}.`,
+  };
+}
+
+export const NAME_FAMILIES = { letterBox, letterRing, monogram, seal, motif, motifBox, motifLetter, nameDuo };
 export { int };

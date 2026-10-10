@@ -49,11 +49,11 @@ class PathB {
   open() { return this.d; }
 }
 
-const S = (d: string, role: ShapeRole = "primary", extra: Partial<LogoShape> = {}): LogoShape => ({ d, role, ...extra });
-const K = (d: string, extra: Partial<LogoShape> = {}): LogoShape => ({ d, role: "primary", knock: true, ...extra });
+export const S = (d: string, role: ShapeRole = "primary", extra: Partial<LogoShape> = {}): LogoShape => ({ d, role, ...extra });
+export const K = (d: string, extra: Partial<LogoShape> = {}): LogoShape => ({ d, role: "primary", knock: true, ...extra });
 
 /** عدسة (ورقة صغيرة) بين نقطتين */
-function lens(p: Pen, x1: number, y1: number, x2: number, y2: number, w: number) {
+export function lens(p: Pen, x1: number, y1: number, x2: number, y2: number, w: number) {
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
   const nx = (-dy / len) * w, ny = (dx / len) * w;
   return p.path().M(x1, y1).Q(mx + nx, my + ny, x2, y2).Q(mx - nx, my - ny, x1, y1).Z();

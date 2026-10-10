@@ -71,7 +71,7 @@ function containerPaths(kind: Container, p: Pen): { d: string; half?: boolean }[
 }
 
 // ── النواة: حرف/حرفان/رمز نشاط ─────────────────────────────
-type Core = { kind: "letter"; ch: string; script: "ar" | "en" } | { kind: "pair"; pair: string; script: "ar" | "en" } | { kind: "motif"; id: string };
+type Core = { kind: "letter"; ch: string; script: "ar" | "en" } | { kind: "pair"; pair: string; script: "ar" | "en" } | { kind: "motif"; id: string; word?: string; label?: string };
 
 export function coresFor(ctx: NameCtx): Core[] {
   const out: Core[] = [];
@@ -79,11 +79,14 @@ export function coresFor(ctx: NameCtx): Core[] {
   if (ctx.initialEn) out.push({ kind: "letter", ch: ctx.initialEn, script: "en" });
   if (ctx.pairAr) out.push({ kind: "pair", pair: ctx.pairAr, script: "ar" });
   if (ctx.pairEn && ctx.pairEn.length === 2) out.push({ kind: "pair", pair: ctx.pairEn, script: "en" });
-  const ids = Array.from(new Set([...motifsFor(ctx.industry, ctx.sub), ...GENERIC_MOTIFS]));
+  // معاني الاسم أولاً (زهرة ← وردة…) ثم رموز النشاط
+  ctx.meanings.forEach((m) => out.push({ kind: "motif", id: m.motif, word: m.word, label: m.label }));
+  const named = new Set(ctx.meanings.map((m) => m.motif));
+  const ids = Array.from(new Set([...motifsFor(ctx.industry, ctx.sub), ...GENERIC_MOTIFS])).filter((id) => !named.has(id));
   ids.forEach((id) => out.push({ kind: "motif", id }));
   return out;
 }
-const coreKey = (c: Core) => (c.kind === "motif" ? `m-${c.id}` : c.kind === "pair" ? `p-${c.pair}` : `l-${c.ch}`);
+const coreKey = (c: Core) => (c.kind === "motif" ? `m-${c.id}${c.word ? "-n" : ""}` : c.kind === "pair" ? `p-${c.pair}` : `l-${c.ch}`);
 
 function textShape(ch: string, script: "ar" | "en", size: number, x: number, y: number, extra: Partial<LogoShape>): LogoShape {
   return { role: "primary", text: { value: ch, x, y: letterYFor(ch, script, y), size: letterSize(script, size), weight: 800, script, letterSpacing: 0 }, ...extra };
@@ -135,7 +138,9 @@ export function totalSpace(): number {
 // ── التركيب ─────────────────────────────────────────────────
 export function compose(rng: RNG, ctx: NameCtx): FamilyResult {
   const cores = coresFor(ctx);
-  const core = pick(rng, cores);
+  // نصف التركيبات تقريباً تبدأ من معنى الاسم عندما يوجد
+  const namedCores = cores.filter((c) => c.kind === "motif" && c.word);
+  const core = namedCores.length && chance(rng, 0.5) ? pick(rng, namedCores) : pick(rng, cores);
   const container: Container = chance(rng, 0.08) ? "none" : pick(rng, CONTAINERS);
   const treat: Treatment = container === "none" ? (chance(rng, 0.5) ? "plain" : "echo") : pick(rng, TREATMENTS);
   const frame: Frame = container === "none" ? "none" : pick(rng, FRAMES);
@@ -191,10 +196,10 @@ export function compose(rng: RNG, ctx: NameCtx): FamilyResult {
   const acc: Accent = outer && accent === "orbit" ? "dotTR" : accent;
   shapes.push(...accentShapes(acc).map((s) => ({ ...s, role: (scheme.mark === boxRole && filled ? "accent" : scheme.mark) as ShapeRole })));
 
-  const coreLabel = core.kind === "motif" ? MOTIFS[core.id].label : core.kind === "pair" ? `«${core.pair}»` : `«${core.ch}»`;
+  const coreLabel = core.kind === "motif" ? (core.word ? `${MOTIFS[core.id].label} من «${core.word}»` : MOTIFS[core.id].label) : core.kind === "pair" ? `«${core.pair}»` : `«${core.ch}»`;
   const key = ["cmp", coreKey(core), container, treat, frame, acc, si, scale].join("|");
   const coreMeaning =
-    core.kind === "motif" ? MOTIFS[core.id].meaning
+    core.kind === "motif" ? (core.word ? `كلمة «${core.word}» في اسمك تعني ${core.label}، فصارت رمزاً: ${MOTIFS[core.id].meaning}` : MOTIFS[core.id].meaning)
       : core.kind === "pair" ? `الحرفان ${core.pair} من اسم «${ctx.nameAr}» كتوقيع خاص`
         : `الحرف المميز «${core.ch}» من اسم «${ctx.nameAr}»`;
   return {
