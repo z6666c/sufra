@@ -82,11 +82,17 @@ export async function readToken(token?: string | null): Promise<Session | null> 
   }
 }
 
-/** قراءة الجلسة من طلب API */
+/** وضع الديمو العام: أي زائر يدخل التطبيق مباشرة كحساب ديمو (عطّله بـ PUBLIC_DEMO=false) */
+export const publicDemo = () => process.env.PUBLIC_DEMO !== "false" && process.env.DEMO_ENABLED !== "false";
+export const GUEST = "guest";
+const guestSession = (): Session => ({ u: GUEST, r: "demo", exp: Math.floor(Date.now() / 1000) + 3600 });
+
+/** قراءة الجلسة من طلب API — الزائر بدون دخول يُعامل كديمو عند تفعيل الوضع العام */
 export async function sessionFromRequest(req: Request): Promise<Session | null> {
   const cookie = req.headers.get("cookie") ?? "";
   const m = cookie.split(/;\s*/).find((c) => c.startsWith(`${SESSION_COOKIE}=`));
-  return readToken(m ? decodeURIComponent(m.slice(SESSION_COOKIE.length + 1)) : null);
+  const s = await readToken(m ? decodeURIComponent(m.slice(SESSION_COOKIE.length + 1)) : null);
+  return s ?? (publicDemo() ? guestSession() : null);
 }
 
 export const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: isProd(), path: "/", maxAge: MAX_AGE };

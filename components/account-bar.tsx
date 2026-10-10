@@ -2,7 +2,7 @@
 // شريط الحساب: نوع الحساب + رابط الإدارة + خروج
 import * as React from "react";
 
-export type Me = { username?: string; role: "admin" | "demo" | null };
+export type Me = { username?: string; role: "admin" | "demo" | null; guest?: boolean };
 let cached: Promise<Me> | null = null;
 export function fetchMe(): Promise<Me> {
   if (typeof window === "undefined") return Promise.resolve({ role: null });
@@ -22,11 +22,15 @@ export function AccountBar() {
   return (
     <div className="flex items-center gap-2 text-xs">
       {me.role === "demo" ? (
-        <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">حساب ديمو</span>
+        <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">نسخة ديمو</span>
       ) : (
         <a href="/admin" className="rounded-full bg-ink px-2.5 py-1 font-semibold text-paper">لوحة الإدارة</a>
       )}
-      <button onClick={logout} className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">خروج</button>
+      {me.guest ? (
+        <a href="/login" className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">دخول الإدارة</a>
+      ) : (
+        <button onClick={logout} className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">خروج</button>
+      )}
     </div>
   );
 }
