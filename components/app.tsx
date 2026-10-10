@@ -1,4 +1,5 @@
 "use client";
+import { AccountBar, DemoNotice } from "./account-bar";
 import * as React from "react";
 import { useMenu } from "@/store/menu-store";
 import { Onboarding } from "./onboarding";
@@ -35,8 +36,10 @@ export default function SufraApp() {
           <AppMark />
           <span className="font-display text-xl font-bold">سُفرة</span>
           <span className="hidden text-sm text-muted sm:inline">· منيو وهوية مطعمك ومقهاك</span>
+          <div className="mr-auto"><AccountBar /></div>
         </div>
       </header>
+      <DemoNotice text="أنت في حساب الديمو: جرّب المنيو والهوية والتصدير بحرية — النشر واقتراحات الذكاء المدفوعة متاحة لحساب الإدارة." />
       {mounted && (stage === "studio" && doc ? <Studio /> : <Onboarding />)}
       <ExportStage />
       <ExportOverlay />

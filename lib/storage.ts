@@ -73,3 +73,38 @@ export async function saveMenu(doc: MenuDoc, slug?: string, editKey?: string): P
   await write(candidate, { doc: { ...doc, slug: candidate }, editKeyHash: hash(key), createdAt: now, updatedAt: now });
   return { slug: candidate, editKey: key };
 }
+
+// ── للإدارة ──────────────────────────────────────────────────
+export interface MenuSummary { slug: string; name: string; type: string; city?: string; items: number; createdAt: string; updatedAt: string }
+
+export async function listMenus(): Promise<MenuSummary[]> {
+  let slugs: string[] = [];
+  const r = redis();
+  if (r) {
+    const res = await fetch(`${r.url}/keys/menu:*`, { headers: { Authorization: `Bearer ${r.token}` }, cache: "no-store" });
+    if (res.ok) slugs = ((await res.json()).result as string[]).map((k) => k.replace(/^menu:/, ""));
+  } else {
+    try {
+      slugs = (await fs.readdir(process.env.MENU_STORAGE_DIR || ".data/menus")).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5));
+    } catch { slugs = []; }
+  }
+  const rows = await Promise.all(slugs.slice(0, 500).map(async (slug): Promise<MenuSummary | null> => {
+    const m = await read(slug);
+    if (!m) return null;
+    return {
+      slug, name: m.doc.venue.name, type: m.doc.venue.type, city: m.doc.venue.city,
+      items: m.doc.categories.reduce((n, c) => n + c.items.length, 0), createdAt: m.createdAt, updatedAt: m.updatedAt,
+    };
+  }));
+  return rows.filter((x): x is MenuSummary => !!x).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function deleteMenu(slug: string): Promise<boolean> {
+  if (!SLUG_RE.test(slug)) return false;
+  const r = redis();
+  if (r) {
+    const res = await fetch(`${r.url}/del/menu:${slug}`, { method: "POST", headers: { Authorization: `Bearer ${r.token}` } });
+    return res.ok;
+  }
+  try { await fs.unlink(path.join(process.env.MENU_STORAGE_DIR || ".data/menus", `${slug}.json`)); return true; } catch { return false; }
+}

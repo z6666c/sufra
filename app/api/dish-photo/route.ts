@@ -1,10 +1,14 @@
 // توليد صورة طبق واقعية عبر Recraft (اختياري) — تُعاد كـ data URL ليضغطها المتصفح ويحفظها مع المنيو
 import { NextResponse } from "next/server";
+import { sessionFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
+  const session = await sessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "يلزم تسجيل الدخول" }, { status: 401 });
+  if (session.r === "demo") return NextResponse.json({ error: "توليد صور الأطباق غير متاح في حساب الديمو" }, { status: 403 });
   const key = process.env.RECRAFT_API_KEY;
   if (!key) return NextResponse.json({ error: "NO_KEY" }, { status: 501 });
   const { name, nameEn, desc, venueType } = (await req.json()) as { name: string; nameEn?: string; desc?: string; venueType?: string };

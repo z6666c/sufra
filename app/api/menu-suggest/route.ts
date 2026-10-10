@@ -1,5 +1,6 @@
 // اقتراح أوصاف عربية وإنجليزية جذابة لأصناف المنيو عبر Gemini (اختياري)
 import { NextResponse } from "next/server";
+import { sessionFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,6 +21,9 @@ const schema = {
 };
 
 export async function POST(req: Request) {
+  const session = await sessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "يلزم تسجيل الدخول" }, { status: 401 });
+  if (session.r === "demo") return NextResponse.json({ error: "اقتراحات الذكاء الاصطناعي غير متاحة في حساب الديمو" }, { status: 403 });
   const key = process.env.GEMINI_API_KEY;
   if (!key) return NextResponse.json({ error: "NO_KEY" }, { status: 501 });
   const { venueName, venueType, items } = (await req.json()) as {
