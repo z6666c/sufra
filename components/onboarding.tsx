@@ -4,6 +4,7 @@ import { ArrowLeft, Beef, Coffee, Croissant, CupSoda, Fish, Upload, UtensilsCros
 import { useMenu } from "@/store/menu-store";
 import type { VenueType } from "@/lib/types";
 import { VENUE_TYPES } from "@/lib/templates";
+import { NameCheckPanel } from "./name-check-panel";
 import { compressImage, fileToDataUrl } from "@/lib/image";
 import { Button, cn, Input, Label } from "./ui/primitives";
 
@@ -66,6 +67,10 @@ export function Onboarding() {
           <div><Label hint="اختياري">بالإنجليزية</Label><Input dir="ltr" value={nameEn} onChange={(e) => setNameEn(e.target.value)} placeholder="Al Reef Roastery" maxLength={40} /></div>
         </div>
         <div className="mb-5"><Label>المدينة</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
+        <div className="mb-5">
+          <NameCheckPanel compact name={name} nameEn={nameEn} city={city} activity={VENUE_TYPES.find((v) => v.id === type)?.label ?? "مطعم"}
+            onPick={(n) => (/[\u0600-\u06FF]/.test(n) ? setName(n) : setNameEn(n))} />
+        </div>
         <div className="mb-6 flex items-center gap-3 rounded-2xl bg-paper p-3">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}

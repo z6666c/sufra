@@ -2,6 +2,8 @@
 import * as React from "react";
 import { Check, Plus, RefreshCw, Upload } from "lucide-react";
 import { AiLogoTrial } from "./ai-trial";
+import { NameCheckPanel } from "../name-check-panel";
+import { VENUE_TYPES } from "@/lib/templates";
 import { useMenu } from "@/store/menu-store";
 import type { MenuLayout, PaletteKey, Venue } from "@/lib/types";
 import { colorsOf, symbolFonts, symbolInner } from "@/lib/logo/render";
@@ -100,6 +102,8 @@ export function VenueEditor() {
     <div className="space-y-3">
       {f("name", "اسم المنشأة")}
       {f("nameEn", "الاسم بالإنجليزية", true)}
+      <NameCheckPanel compact name={v.name} nameEn={v.nameEn} city={v.city} activity={VENUE_TYPES.find((t) => t.id === v.type)?.label ?? "مطعم"}
+        onPick={(n) => update(/[\u0600-\u06FF]/.test(n) ? { name: n } : { nameEn: n })} />
       {f("tagline", "عبارة قصيرة (اختياري)")}
       {f("hours", "أوقات العمل")}
       {f("address", "العنوان")}
