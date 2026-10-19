@@ -20,7 +20,7 @@ const res = await build({
     "framer-motion": path.join(root, "demo/shims/framer-motion.tsx"),
     "lucide-react": path.join(root, "demo/shims/lucide.ts"),
   },
-  define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_SUFRA_DEMO": JSON.stringify(process.env.PREVIEW_FLAG ?? "1") },
+  define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_PRICE_ONCE": "undefined", "process.env.NEXT_PUBLIC_PRICE_MONTHLY": "undefined", "process.env.NEXT_PUBLIC_ONCE_HOSTING_MONTHS": "undefined", "process.env.NEXT_PUBLIC_PAYMENT_NOTE": "undefined", "process.env.NEXT_PUBLIC_WHATSAPP": "undefined", "process.env.NEXT_PUBLIC_SUFRA_DEMO": JSON.stringify(process.env.PREVIEW_FLAG ?? "1") },
   logLevel: "warning",
 });
 const js = res.outputFiles[0].text;

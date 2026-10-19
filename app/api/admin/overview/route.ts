@@ -1,4 +1,5 @@
-import { listAllDesigns, listCustomers, statsSeries } from "@/lib/customers";
+import { isPaid, listAllDesigns, listCustomers, statsSeries } from "@/lib/customers";
+import { PLANS } from "@/lib/plans";
 import { json, requireAdmin } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ const COST = {
 export async function GET(req: Request) {
   const g = await requireAdmin(req);
   if (g instanceof Response) return g;
-  const metrics = ["signup", "login", "design_new", "design_save", "ai_logos", "ai_logo_image", "ai_identity", "name_check", "menu_ai", "dish_photo", "publish", "otp_email", "otp_sms"];
+  const metrics = ["signup", "login", "design_new", "design_save", "ai_logos", "ai_logo_image", "ai_identity", "name_check", "menu_ai", "dish_photo", "publish", "otp_email", "otp_sms", "payment", "revenue", "payment_request"];
   const [customers, designs, series] = await Promise.all([listCustomers(1000), listAllDesigns(1000), statsSeries(metrics, 30)]);
   const now = Date.now(), week = 7 * 86_400_000;
   const sum = (m: string) => (series.series[m] ?? []).reduce((a, b) => a + b, 0);
@@ -29,9 +30,16 @@ export async function GET(req: Request) {
       designs: designs.length,
       expiring7: designs.filter((d) => d.expiresAt && d.expiresAt - now < week).length,
       aiCost30: Math.round(aiCost30 * 100) / 100,
+      revenue30: sum("revenue"),
+      payments30: sum("payment"),
+      paidDesigns: designs.filter((d) => isPaid(d)).length,
+      pendingRequests: designs.filter((d) => d.paymentRequestedAt && !isPaid(d)).length,
+      activeMonthly: designs.filter((d) => isPaid(d) && d.paid?.plan === "monthly").length,
+      mrr: designs.filter((d) => isPaid(d) && d.paid?.plan === "monthly").length * PLANS.monthly.price,
     },
     series,
     totals: Object.fromEntries(metrics.map((m) => [m, sum(m)])),
     cost: COST,
+    plans: { once: PLANS.once.price, monthly: PLANS.monthly.price },
   });
 }

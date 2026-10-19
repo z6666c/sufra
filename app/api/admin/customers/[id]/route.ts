@@ -1,4 +1,5 @@
-import { deleteCustomer, getCustomer, listDesigns, TRIAL_DAYS, updateCustomer } from "@/lib/customers";
+import { deleteCustomer, getCustomer, isPaid, listDesigns, markDesignPaid, updateCustomer } from "@/lib/customers";
+import { PLANS } from "@/lib/plans";
 import { json, requireAdmin } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -19,11 +20,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const body = await req.json().catch(() => ({}));
   const c = await getCustomer(id);
   if (!c) return json({ error: "غير موجود" }, 404);
-  const day = 86_400_000;
   let patch: Parameters<typeof updateCustomer>[1] = {};
-  if (body.action === "extend") patch = { status: "trial", trialEndsAt: Math.max(Date.now(), c.trialEndsAt) + (Number(body.days) || TRIAL_DAYS) * day };
-  else if (body.action === "paid") patch = { status: "paid" };
-  else if (body.action === "trial") patch = { status: "trial", trialEndsAt: Math.max(Date.now() + TRIAL_DAYS * day, c.trialEndsAt) };
+  if (body.action === "paid") patch = { status: "paid" };
+  // «تفعيل كمدفوع» على مستوى العميل يفتح كل تصاميمه الحالية
+  if (body.action === "paid") for (const d of await listDesigns(id)) if (!isPaid(d)) await markDesignPaid(d.id, { plan: "once", amount: PLANS.once.price, months: PLANS.once.months, by: g.u });
   if (typeof body.note === "string") patch.note = body.note.slice(0, 300);
   if (typeof body.name === "string") patch.name = body.name.slice(0, 80);
   return json({ customer: await updateCustomer(id, patch) });

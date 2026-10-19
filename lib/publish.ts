@@ -1,12 +1,12 @@
 "use client";
 import type { MenuDoc } from "./types";
 
-export async function publishMenu(doc: MenuDoc, prev?: { slug: string; editKey: string } | null) {
+export async function publishMenu(doc: MenuDoc, prev?: { slug: string; editKey: string } | null, designId?: string) {
   if (process.env.NEXT_PUBLIC_SUFRA_DEMO === "1") throw new Error("النشر متاح عند تشغيل مشروع Next.js على خادمك؛ هذه نسخة معاينة.");
   const res = await fetch("/api/menus", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ doc, slug: prev?.slug, editKey: prev?.editKey }),
+    body: JSON.stringify({ doc, slug: prev?.slug, editKey: prev?.editKey, designId }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `تعذر النشر (${res.status})`);

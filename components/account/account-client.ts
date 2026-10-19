@@ -3,19 +3,24 @@
 import * as React from "react";
 
 export interface CustomerInfo { id: string; email?: string; phone?: string; name?: string; status: "trial" | "paid"; trialEndsAt: number; createdAt: number }
-export interface DesignMeta { id: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number }
+export interface DesignMeta {
+  id: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number;
+  paid?: { plan: "once" | "monthly"; at: number; amount: number; until?: number | null } | null;
+  paymentRequestedAt?: number | null; requestedPlan?: "once" | "monthly" | null;
+}
+export const designPaid = (d?: DesignMeta | null) => !!d?.paid && (!d.paid.until || d.paid.until > Date.now());
 export interface Me {
   role: "admin" | "demo" | "customer" | null;
   guest?: boolean;
   customer?: CustomerInfo;
   designs?: DesignMeta[];
-  signup?: { available: boolean; email: boolean; phone: boolean; trialDays: number; store: string };
+  signup?: { available: boolean; email: boolean; phone: boolean; trialDays: number; draftDays?: number; store: string };
 }
 
 const PREVIEW = process.env.NEXT_PUBLIC_SUFRA_DEMO === "1";
 
-type State = { me: Me | null; loading: boolean; signup: { open: boolean; reason?: string }; designsOpen: boolean };
-let state: State = { me: null, loading: false, signup: { open: false }, designsOpen: false };
+type State = { me: Me | null; loading: boolean; signup: { open: boolean; reason?: string }; designsOpen: boolean; paywall: { open: boolean; designId?: string; reason?: string } };
+let state: State = { me: null, loading: false, signup: { open: false }, designsOpen: false, paywall: { open: false } };
 const subs = new Set<() => void>();
 const emit = (patch: Partial<State>) => { state = { ...state, ...patch }; subs.forEach((f) => f()); };
 let pending: ((ok: boolean) => void) | null = null;
@@ -80,4 +85,44 @@ export async function loadDesignRemote<T>(id: string): Promise<{ id: string; dat
 export async function deleteDesignRemote(id: string) {
   await fetch(`/api/account/designs/${encodeURIComponent(id)}`, { method: "DELETE" });
   refreshAccount();
+}
+
+// ── الدفع: التحميل والنشر بعد الدفع فقط ──
+/** هل يملك المستخدم حق التحميل لهذا التصميم؟ (الإدارة دائماً) */
+export function entitled(designId?: string | null): boolean {
+  const me = state.me;
+  if (PREVIEW) return false;
+  if (me?.role === "admin") return true;
+  if (me?.signup && !me.signup.available) return true; // بدون قاعدة بيانات لا يمكن التحقق من الدفع
+  return !!designId && designPaid(me?.designs?.find((d) => d.id === designId));
+}
+
+/** يتأكد من التسجيل ثم الدفع؛ يفتح نافذة الباقات إن لم يكن التصميم مدفوعاً */
+export async function ensurePaid(getDesignId: () => Promise<string | undefined>, reason?: string): Promise<boolean> {
+  if (PREVIEW) return true;
+  if (!(await ensureAccount(reason))) return false;
+  const me0 = state.me;
+  if (me0?.role === "admin") return true;
+  if (me0?.signup && !me0.signup.available) return true;
+  const id = await getDesignId();
+  if (!id) return false;
+  const me = await refreshAccount();
+  if (designPaid(me?.designs?.find((d) => d.id === id))) return true;
+  emit({ paywall: { open: true, designId: id, reason } });
+  return false;
+}
+export const openPaywall = (designId: string, reason?: string) => emit({ paywall: { open: true, designId, reason } });
+export const closePaywall = () => emit({ paywall: { open: false } });
+
+export async function requestActivation(designId: string, plan: "once" | "monthly") {
+  const r = await fetch(`/api/account/designs/${encodeURIComponent(designId)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? "تعذر إرسال الطلب");
+  await refreshAccount();
+}
+
+/** حالة الدفع للتصميم الحالي (للعلامة المائية) */
+export function useEntitled(designId?: string | null) {
+  const s = useAccount();
+  return React.useMemo(() => entitled(designId), [s.me, designId]);
 }

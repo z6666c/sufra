@@ -1,5 +1,6 @@
 "use client";
 // منصة تصدير خفية تركّب المخرجات بمقاسها الحقيقي ثم تحوّلها إلى ملفات
+import { paidGate } from "./paid-gate";
 import * as React from "react";
 import { create } from "zustand";
 import { allItems, useMenu } from "@/store/menu-store";
@@ -37,24 +38,28 @@ const state = () => useMenu.getState();
 const fk = () => JSON.stringify(state().doc!.brand.typography);
 
 export async function exportMenuPdf(mode: "print" | "office") {
+  if (!(await paidGate("لتحميل المنيو المطبوع PDF."))) return;
   const doc = state().doc!;
   const bytes = await withStage("تجهيز المنيو PDF", (g) => renderMenuPdf(g, paginate(doc).length, mode, fk(), slugName(doc)));
   downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${slugName(doc)}_menu-A4-${mode}.pdf`);
 }
 
 export async function exportTableCard() {
+  if (!(await paidGate("لتحميل بطاقة الطاولة."))) return;
   const doc = state().doc!;
   const bytes = await withStage("تجهيز بطاقة الطاولة", (g) => renderTableCardPdf(g, fk(), slugName(doc)));
   downloadBlob(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${slugName(doc)}_table-card-A6.pdf`);
 }
 
 export async function exportPost(id: string) {
+  if (!(await paidGate("لتحميل منشورات السوشيال."))) return;
   const doc = state().doc!;
   const blob = await withStage("تجهيز المنشور", async (g) => canvasToBlob(await rasterize(g(`post-${id}`), 1, fk())));
   downloadBlob(blob, `${slugName(doc)}_${id}.png`);
 }
 
 export async function exportAll(): Promise<string[]> {
+  if (!(await paidGate("لتحميل حزمة ملفات مطعمك."))) return [];
   const { doc, published } = state();
   const res = await withStage("تجهيز الحزمة الكاملة", (g) =>
     buildPackage({

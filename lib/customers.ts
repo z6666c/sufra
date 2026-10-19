@@ -3,7 +3,9 @@ import crypto from "node:crypto";
 import { kv, kvJson, kvPipeline } from "./kv";
 
 const APP = "sufra";
-export const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 30);
+/** مدة حفظ المسودة غير المدفوعة (لإكمال الشراء) — لا توجد فترة مجانية */
+export const DRAFT_DAYS = Number(process.env.DRAFT_DAYS || 7);
+export const TRIAL_DAYS = DRAFT_DAYS;
 const DAY = 86_400_000;
 const k = {
   cust: (id: string) => `${APP}:cust:${id}`,
@@ -18,11 +20,19 @@ const k = {
 export type CustomerStatus = "trial" | "paid";
 export interface Customer {
   id: string; email?: string; phone?: string; name?: string;
-  status: CustomerStatus; createdAt: number; lastLoginAt: number; trialEndsAt: number; note?: string;
+  status: CustomerStatus; createdAt: number; lastLoginAt: number; trialEndsAt: number; note?: string; example?: boolean;
 }
+export type PlanKind = "once" | "monthly";
+export interface DesignPayment { at: number; amount: number; plan: PlanKind; until?: number | null; by?: string; ref?: string }
 export interface Design<T = unknown> {
   id: string; customerId: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; data: T; size: number;
+  /** الدفع يفتح التحميل (والنشر في سُفرة) ويجعل التصميم دائماً */
+  paid?: DesignPayment | null;
+  paymentRequestedAt?: number | null;
+  requestedPlan?: PlanKind | null;
+  example?: boolean;
 }
+export const isPaid = (d: Pick<Design, "paid">) => !!d.paid && (!d.paid.until || d.paid.until > Date.now());
 export type DesignMeta = Omit<Design, "data">;
 
 // ── المعرّف: بريد أو جوال ──
@@ -75,14 +85,6 @@ export async function updateCustomer(id: string, patch: Partial<Pick<Customer, "
   if (!c) return null;
   const next = { ...c, ...patch };
   await kvJson.set(k.cust(id), next);
-  // الدفع يجعل التصاميم دائمة، والتمديد يحدّث صلاحيتها
-  const ids = await kv<string[]>("SMEMBERS", k.custDesigns(id));
-  for (const did of ids) {
-    const d = await kvJson.get<Design>(k.design(did));
-    if (!d) continue;
-    if (next.status === "paid") { d.expiresAt = null; await kvJson.set(k.design(did), d); }
-    else { d.expiresAt = Math.max(d.expiresAt ?? 0, next.trialEndsAt); await kvJson.set(k.design(did), d, (d.expiresAt - Date.now()) / 1000); }
-  }
   return next;
 }
 
@@ -146,7 +148,7 @@ export async function saveDesign(c: Customer, input: { id?: string; title: strin
   if (!d) {
     const count = (await kv<string[]>("SMEMBERS", k.custDesigns(c.id))).length;
     if (count >= MAX_DESIGNS) throw new Error("LIMIT");
-    d = { id: newId(), customerId: c.id, title: "", kind: input.kind, createdAt: now, updatedAt: now, expiresAt: c.status === "paid" ? null : Math.max(now + TRIAL_DAYS * DAY, c.trialEndsAt), data: null, size: 0 };
+    d = { id: newId(), customerId: c.id, title: "", kind: input.kind, createdAt: now, updatedAt: now, expiresAt: now + DRAFT_DAYS * DAY, data: null, size: 0 };
     await kvPipeline([["SADD", k.custDesigns(c.id), d.id], ["ZADD", k.designs, now, d.id]]);
     await stat("design_new");
   }
@@ -184,4 +186,104 @@ export async function statsSeries(metrics: string[], days = 30): Promise<{ days:
   const series: Record<string, number[]> = {};
   metrics.forEach((m, mi) => { series[m] = ds.map((_, di) => Number(vals[mi * days + di] ?? 0)); });
   return { days: ds, series };
+}
+
+// ── الدفع ──
+async function patchDesign(id: string, f: (d: Design) => Design) {
+  const d = await kvJson.get<Design>(k.design(id));
+  if (!d) return null;
+  const next = f(d);
+  if (next.expiresAt) await kvJson.set(k.design(id), next, (next.expiresAt - Date.now()) / 1000);
+  else await kvJson.set(k.design(id), next);
+  return next;
+}
+
+/** العميل يطلب تفعيل الدفع (حتى ربط بوابة الدفع) */
+export async function requestPayment(id: string, customerId: string, plan: PlanKind = "once") {
+  const d = await getDesign(id, customerId);
+  if (!d) return null;
+  // المسودة المطلوب دفعها تُمدد حتى تُراجع الإدارة الطلب
+  const r = await patchDesign(id, (x) => ({ ...x, paymentRequestedAt: Date.now(), requestedPlan: plan, expiresAt: x.expiresAt ? Math.max(x.expiresAt, Date.now() + DRAFT_DAYS * DAY) : null }));
+  await stat("payment_request");
+  return r;
+}
+
+/** الإدارة تفعّل الدفع لتصميم: يصبح دائماً ويُفتح التحميل */
+export async function markDesignPaid(id: string, opts: { plan: PlanKind; amount: number; months?: number; by?: string; ref?: string } | null) {
+  const MONTH = 30.44 * DAY;
+  const r = await patchDesign(id, (x) => {
+    if (!opts) return { ...x, paid: null, requestedPlan: null, paymentRequestedAt: null, expiresAt: Date.now() + DRAFT_DAYS * DAY };
+    // تجديد الاشتراك الشهري يُضاف لنهاية المدة الحالية إن كانت سارية
+    const base = x.paid?.until && x.paid.until > Date.now() && opts.plan === x.paid.plan ? x.paid.until : Date.now();
+    const until = opts.months ? base + opts.months * MONTH : null;
+    return { ...x, expiresAt: null, paymentRequestedAt: null, requestedPlan: null, paid: { at: Date.now(), amount: opts.amount, plan: opts.plan, until, by: opts.by, ref: opts.ref } };
+  });
+  if (!r) return null;
+  // تفعيل تصميم تجريبي لا يُحسب في الإيراد الحقيقي (أرقام الأمثلة محسوبة مسبقاً وتُحذف معها)
+  if (opts && !(r as { example?: boolean }).example) { await stat("payment"); await stat("revenue", Math.round(opts.amount)); }
+  // حالة العميل: مدفوع إذا عنده تصميم مدفوع واحد على الأقل
+  const c = await getCustomer(r.customerId);
+  if (c) {
+    const anyPaid = opts ? true : (await Promise.all((await kv<string[]>("SMEMBERS", k.custDesigns(c.id))).map((x) => getDesign(x)))).some((x) => x && isPaid(x));
+    await kvJson.set(k.cust(c.id), { ...c, status: anyPaid ? "paid" : "trial" });
+  }
+  return r;
+}
+
+// ── بيانات تجريبية للوحة التحكم ──
+const EX_NAMES = ["مقهى الواحة", "مطعم نخلة", "زهرة الياسمين", "صقر للشحن", "مخبز التاج", "مرسى البحر"];
+export async function seedExamples(kind: string, prices: { once: number; monthly: number }, onceMonths?: number) {
+  const now = Date.now();
+  const made: string[] = [];
+  const idents: Ident[] = [
+    { type: "email", value: "ex.waha@example.com" }, { type: "phone", value: "+966500000101" }, { type: "email", value: "ex.yasmin@example.com" },
+    { type: "phone", value: "+966500000102" }, { type: "email", value: "ex.taj@example.com" }, { type: "email", value: "ex.marsa@example.com" },
+  ];
+  for (let i = 0; i < idents.length; i++) {
+    const { customer } = await upsertCustomer(idents[i]);
+    const created = now - (i * 2 + 1) * DAY;
+    await kvJson.set(k.cust(customer.id), { ...customer, example: true, note: "مثال", createdAt: created, lastLoginAt: now - i * 3600_000 });
+    await kv("ZADD", k.custs, created, customer.id);
+    const meta = await saveDesign({ ...customer, example: true }, { title: EX_NAMES[i], kind, data: { example: true } });
+    await patchDesign(meta.id, (x) => ({ ...x, example: true, createdAt: created, updatedAt: now - i * 1800_000 }));
+    // حالات مختلفة: طلبا تفعيل، مدفوع مرة وحدة، اشتراك شهري، مسودة تنتهي قريباً
+    if (i === 0) await requestPayment(meta.id, customer.id, "once");
+    if (i === 1) await requestPayment(meta.id, customer.id, "monthly");
+    if (i === 2) await markDesignPaid(meta.id, { plan: "once", amount: prices.once, months: onceMonths, by: "مثال" });
+    if (i === 3) await markDesignPaid(meta.id, { plan: "monthly", amount: prices.monthly, months: 1, by: "مثال" });
+    if (i === 5) await patchDesign(meta.id, (x) => ({ ...x, expiresAt: now + 2 * DAY }));
+    made.push(customer.id);
+  }
+  // إيراد الأمثلة المدفوعة (يُحذف مع البيانات التجريبية)
+  await stat("payment", 2); await stat("revenue", Math.round(prices.once) + Math.round(prices.monthly));
+  // إحصائيات يومية تقريبية لآخر أسبوعين لعرض الرسوم
+  const cmds: (string | number)[][] = [];
+  const statLog: [string, number][] = [];
+  for (let day = 1; day <= 14; day++) {
+    const dk = dayKey(now - day * DAY);
+    const add = (m: string, n: number) => { if (n > 0) { cmds.push(["INCRBY", k.stat(dk, m), n], ["EXPIRE", k.stat(dk, m), 400 * 86400]); statLog.push([k.stat(dk, m), n]); } };
+    add("signup", (day * 7) % 4); add("ai_logos", (day * 5) % 6); add("ai_logo_image", ((day * 5) % 6) * 4); add("ai_identity", (day * 3) % 5);
+    add("name_check", day % 3); add("otp_email", (day * 7) % 4 + 1);
+  }
+  await kvPipeline(cmds);
+  await kv("SET", `${APP}:examples`, JSON.stringify({ ids: made, stats: statLog, at: now, revenue: Math.round(prices.once) + Math.round(prices.monthly) }));
+  return made.length;
+}
+
+export const examplesExist = async () => !!(await kv<string | null>("GET", `${APP}:examples`));
+export async function clearExamples() {
+  const raw = await kv<string | null>("GET", `${APP}:examples`);
+  const rec = raw ? JSON.parse(raw) : { ids: [], stats: [] };
+  const ids: string[] = Array.isArray(rec) ? rec : rec.ids;
+  for (const id of ids) await deleteCustomer(id);
+  // إزالة الإحصائيات التجريبية وما سجلته عمليات الأمثلة (تسجيل، دفع، طلبات)
+  const extra: [string, number][] = [];
+  if (rec.at) {
+    const dk = dayKey(rec.at);
+    for (const [m, n] of [["signup", ids.length], ["login", 0], ["design_new", ids.length], ["design_save", ids.length * 2], ["payment_request", 2], ["payment", 2], ["revenue", rec.revenue ?? 0]] as [string, number][]) if (n) extra.push([k.stat(dk, m), n]);
+  }
+  const all = [...(rec.stats ?? []), ...extra];
+  if (all.length) await kvPipeline(all.map(([key, n]) => ["DECRBY", key, n]));
+  await kv("DEL", `${APP}:examples`);
+  return ids.length;
 }

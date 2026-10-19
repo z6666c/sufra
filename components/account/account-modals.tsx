@@ -1,7 +1,8 @@
 "use client";
 // نافذة التسجيل بالبريد أو الجوال (رمز تحقق) + نافذة «تصاميمي»
 import * as React from "react";
-import { closeDesigns, closeSignup, daysLeft, deleteDesignRemote, refreshAccount, useAccount, type DesignMeta } from "./account-client";
+import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, useAccount, type DesignMeta } from "./account-client";
+import { PLANS, PREVIEW_NOTE, type PlanKind } from "@/lib/plans";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   React.useEffect(() => {
@@ -34,7 +35,6 @@ function SignupModal({ reason }: { reason?: string }) {
   const [wait, setWait] = React.useState(0);
   React.useEffect(() => { if (wait <= 0) return; const t = setTimeout(() => setWait(wait - 1), 1000); return () => clearTimeout(t); }, [wait]);
   const s = me?.signup;
-  const days = s?.trialDays ?? 30;
 
   const send = async () => {
     setBusy(true); setErr("");
@@ -57,9 +57,9 @@ function SignupModal({ reason }: { reason?: string }) {
   };
 
   return (
-    <Shell title="احفظ تصميمك مجاناً" onClose={() => closeSignup(false)}>
+    <Shell title="سجّل دخولك" onClose={() => closeSignup(false)}>
       <p className="mb-4 text-sm leading-relaxed text-muted">
-        {reason ? `${reason} ` : ""}سجّل ببريدك أو رقم جوالك، ويبقى تصميمك محفوظاً لك <b className="text-ink">{days} يوماً</b> تفتحه من أي جهاز قبل الدفع.
+        {reason ? `${reason} ` : ""}سجّل ببريدك أو رقم جوالك لحفظ تصميمك وإتمام الشراء. {PREVIEW_NOTE}
       </p>
       {step === "id" ? (
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="space-y-3">
@@ -92,9 +92,7 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
   return (
     <Shell title="تصاميمي" onClose={closeDesigns}>
       {c && (
-        <p className="mb-3 text-xs text-muted">
-          {c.email ?? c.phone} · {c.status === "paid" ? "حساب مدفوع — التصاميم محفوظة دائماً" : `فترة الحفظ المجانية: ${daysLeft(c.trialEndsAt)} يوماً متبقية`}
-        </p>
+        <p className="mb-3 text-xs text-muted" dir="auto">{c.email ?? c.phone}</p>
       )}
       {!list.length ? (
         <p className="py-6 text-center text-sm text-muted">لا توجد تصاميم محفوظة بعد.</p>
@@ -106,8 +104,12 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
               <li key={d.id} className="flex items-center gap-3 rounded-xl border border-line p-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{d.title}</div>
-                  <div className={`text-[11px] ${left !== null && left <= 5 ? "text-red-600" : "text-muted"}`}>
-                    {left === null ? "محفوظ دائماً" : `يُحذف بعد ${left} يوماً`} · آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory")}
+                  <div className={`text-[11px] ${!designPaid(d) && left !== null && left <= 2 ? "text-red-600" : "text-muted"}`}>
+                    {designPaid(d)
+                      ? <span className="font-semibold text-emerald-700">مدفوع{d.paid?.plan === "monthly" ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory")}` : ""}</span>
+                      : d.paymentRequestedAt ? <span className="font-semibold text-amber-700">بانتظار تفعيل الدفع</span>
+                      : <>معاينة — {left === null ? "" : `تُحذف المسودة بعد ${left} يوم`}</>}
+                    {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory")}
                   </div>
                 </div>
                 <button disabled={!!busy} onClick={async () => { setBusy(d.id); await onOpen(d); setBusy(null); closeDesigns(); }} className="rounded-lg bg-ink px-3 py-1.5 text-xs text-paper disabled:opacity-50">{busy === d.id ? "…" : "فتح"}</button>
@@ -121,12 +123,58 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
   );
 }
 
+function PaywallModal({ designId, reason }: { designId: string; reason?: string }) {
+  const { me } = useAccount();
+  const d = me?.designs?.find((x) => x.id === designId);
+  const [busy, setBusy] = React.useState<PlanKind | null>(null);
+  const [err, setErr] = React.useState("");
+  const note = process.env.NEXT_PUBLIC_PAYMENT_NOTE;
+  const wa = process.env.NEXT_PUBLIC_WHATSAPP?.replace(/\D/g, "");
+  const contact = me?.customer?.email ?? me?.customer?.phone ?? "";
+  const pick = async (plan: PlanKind) => {
+    setBusy(plan); setErr("");
+    try { await requestActivation(designId, plan); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  };
+  if (designPaid(d)) return <Shell title="تم التفعيل" onClose={closePaywall}><p className="text-sm">التصميم مدفوع — أعد المحاولة للتحميل.</p></Shell>;
+  return (
+    <Shell title="افتح التحميل" onClose={closePaywall}>
+      <p className="mb-4 text-sm leading-relaxed text-muted">{reason ? `${reason} ` : ""}اختر الباقة المناسبة لـ «{d?.title ?? "تصميمك"}».</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(["once", "monthly"] as PlanKind[]).map((k) => {
+          const p = PLANS[k];
+          const chosen = d?.paymentRequestedAt && d.requestedPlan === k;
+          return (
+            <div key={k} className={`flex flex-col rounded-xl border p-4 ${chosen ? "border-ember ring-2 ring-ember/30" : "border-line"}`}>
+              <div className="text-xs text-muted">{p.name}</div>
+              <div className="mb-2 font-display text-2xl font-bold">{p.price} <span className="text-sm font-medium text-muted">{p.currency} {p.period}</span></div>
+              <ul className="mb-3 flex-1 space-y-1 text-[11.5px] leading-relaxed text-muted">{p.includes.map((x) => <li key={x}>✓ {x}</li>)}</ul>
+              <button disabled={!!busy} onClick={() => pick(k)} className={`h-9 rounded-lg text-sm font-medium ${chosen ? "bg-ember text-white" : "bg-ink text-paper"} disabled:opacity-50`}>
+                {busy === k ? "…" : chosen ? "تم إرسال الطلب ✓" : "اختر هذه الباقة"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {d?.paymentRequestedAt ? (
+        <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm leading-relaxed text-emerald-900">
+          استلمنا طلبك. {note ?? "سنتواصل معك لإتمام الدفع"}{contact ? ` على ${contact}` : ""}، ويُفتح التحميل فور التفعيل.
+          {wa && <> <a className="font-semibold underline" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(`طلب تفعيل: ${d.title} (${d.requestedPlan === "monthly" ? "شهري" : "مرة واحدة"}) — ${contact} — ${designId}`)}`}>تواصل عبر واتساب</a></>}
+        </div>
+      ) : (
+        <p className="mt-3 text-[11px] text-muted">الدفع الإلكتروني قريباً. اختر باقتك وسنتواصل معك لإتمام الدفع، ويُفتح التحميل فوراً بعد التفعيل.</p>
+      )}
+      {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}
+    </Shell>
+  );
+}
+
 /** تُركّب مرة واحدة في التطبيق */
 export function AccountModals({ onOpenDesign }: { onOpenDesign: (d: DesignMeta) => Promise<void> | void }) {
-  const { signup, designsOpen } = useAccount();
+  const { signup, designsOpen, paywall } = useAccount();
   return (
     <>
       {signup.open && <SignupModal reason={signup.reason} />}
+      {paywall.open && paywall.designId && <PaywallModal designId={paywall.designId} reason={paywall.reason} />}
       {designsOpen && <DesignsModal onOpen={onOpenDesign} />}
     </>
   );

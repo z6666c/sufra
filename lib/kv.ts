@@ -50,7 +50,7 @@ async function localCmd(c: Cmd): Promise<unknown> {
     case "EXPIRE": if (key in db.v) { db.exp[key] = now + Number(a[0]) * 1000; r = 1; } else r = 0; break;
     case "PERSIST": r = key in db.exp ? 1 : 0; delete db.exp[key]; break;
     case "TTL": r = !(key in db.v) ? -2 : key in db.exp ? Math.ceil((db.exp[key] - now) / 1000) : -1; break;
-    case "INCRBY": case "INCR": { const n = Number(db.v[key] ?? 0) + (op2 === "INCR" ? 1 : Number(a[0])); set(String(n)); r = n; break; }
+    case "INCRBY": case "INCR": case "DECRBY": { const n = Number(db.v[key] ?? 0) + (op2 === "INCR" ? 1 : op2 === "DECRBY" ? -Number(a[0]) : Number(a[0])); set(String(n)); r = n; break; }
     case "SADD": { const s = new Set((db.v[key] as string[]) ?? []); a.forEach((x) => s.add(x)); set([...s]); r = 1; break; }
     case "SREM": { const s = new Set((db.v[key] as string[]) ?? []); a.forEach((x) => s.delete(x)); set([...s]); r = 1; break; }
     case "SMEMBERS": r = (db.v[key] as string[]) ?? []; break;

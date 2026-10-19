@@ -1,5 +1,8 @@
 "use client";
-import { daysLeft, ensureAccount, useAccount } from "../account/account-client";
+import { ensureAccount, useAccount, useEntitled } from "../account/account-client";
+import { Watermark, PreviewBadge } from "../account/watermark";
+import { paidGate } from "./paid-gate";
+import { PLANS } from "@/lib/plans";
 import * as React from "react";
 import { ArrowRight, Globe, Megaphone, LayoutList, Palette, Printer, QrCode, Settings2, SlidersHorizontal, Store, FileArchive, Save } from "lucide-react";
 import { useMenu, type EditorTab, type OutputTab } from "@/store/menu-store";
@@ -35,6 +38,7 @@ export function Studio() {
   const published = useMenu((s) => s.published);
   const { me } = useAccount();
   const customer = me?.role === "customer";
+  const paid = useEntitled(saved?.id);
   const [saveMsg, setSaveMsg] = React.useState("");
   // حفظ تلقائي بعد كل تعديل للعميل المسجّل
   React.useEffect(() => {
@@ -79,7 +83,7 @@ export function Studio() {
               <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setDrawer(true)}><SlidersHorizontal className="h-4 w-4" /> تعديل</Button>
               <Button variant="outline" size="sm" onClick={saveNow} disabled={saveState === "saving"} title={saveMsg || undefined}>
                 <Save className="h-4 w-4" />
-                <span className="hidden sm:inline">{saveState === "saving" ? "يحفظ…" : saveMsg ? "تعذر الحفظ" : saved && customer ? `محفوظ · ${daysLeft(saved.expiresAt) ?? "∞"} يوماً` : "احفظ المنيو"}</span>
+                <span className="hidden sm:inline">{saveState === "saving" ? "يحفظ…" : saveMsg ? "تعذر الحفظ" : saved && customer ? (paid ? "محفوظ ✓" : "مسودة محفوظة") : "احفظ المنيو"}</span>
               </Button>
               <Button variant="ghost" size="sm" onClick={reset}><ArrowRight className="h-4 w-4" /> منيو جديد</Button>
             </div>
@@ -93,7 +97,9 @@ export function Studio() {
             ))}
           </div>
         </div>
-        <div className="mx-auto max-w-6xl px-5 py-7">
+        <div className="relative mx-auto max-w-6xl px-5 py-7">
+          <Watermark show={!paid} text="معاينة · سُفرة" />
+          <PreviewBadge show={!paid} label={`النشر والتحميل بعد الدفع: ${PLANS.once.price} ${PLANS.once.currency} مرة واحدة أو ${PLANS.monthly.price} شهرياً`} onUnlock={() => { paidGate("لنشر المنيو وتحميل الملفات."); }} />
           {outTab === "digital" && <DigitalTab />}
           {outTab === "print" && <PrintTab />}
           {outTab === "table" && <TableTab />}

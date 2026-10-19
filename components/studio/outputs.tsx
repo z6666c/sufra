@@ -1,5 +1,6 @@
 "use client";
-import { ensureAccount, isCustomer } from "../account/account-client";
+import { isCustomer } from "../account/account-client";
+import { paidGate } from "./paid-gate";
 import * as React from "react";
 import { Copy, Download, ExternalLink, FileArchive, Globe, Printer, QrCode, Send } from "lucide-react";
 import { allItems, useMenu } from "@/store/menu-store";
@@ -49,8 +50,8 @@ export function DigitalTab() {
           <h3 className="mb-2 font-display text-xl font-bold">انشر المنيو واطبع رمز QR</h3>
           <p className="mb-5 text-sm leading-relaxed text-muted">تحصل على رابط ثابت لمنيوك. أي تعديل لاحق في الأسعار أو الأصناف تنشره بضغطة واحدة، والرمز المطبوع على الطاولات يبقى كما هو.</p>
           <Button variant="ember" disabled={busy} onClick={() => run(async () => {
-            if (!(await ensureAccount("لنشر المنيو الرقمي برابط ورمز QR."))) return;
-            const r = await publishMenu(doc, published); setPublished({ ...r, at: new Date().toISOString() });
+            if (!(await paidGate("لنشر المنيو الرقمي برابط ورمز QR."))) return;
+            const r = await publishMenu(doc, published, useMenu.getState().saved?.id); setPublished({ ...r, at: new Date().toISOString() });
             if (isCustomer()) await useMenu.getState().saveToAccount();
           })}>
             <Send className="h-4 w-4" /> {published ? "نشر التحديثات" : "انشر المنيو"}
@@ -202,8 +203,6 @@ export function ExportTab() {
       </ul>
       {!published && <div className="mb-4"><Note kind="warn">المنيو غير منشور بعد، فستخرج البطاقة ومنشور أوقات العمل بدون رمز QR.</Note></div>}
       <Button variant="ember" size="lg" disabled={busy} onClick={() => run(async () => {
-          if (!(await ensureAccount("لتحميل حزمة ملفات مطعمك."))) return;
-          if (isCustomer()) await useMenu.getState().saveToAccount();
           const w = await exportAll(); setMsg(w.length ? w.join("، ") : null);
         })}>
         <FileArchive className="h-5 w-5" /> تنزيل الحزمة (ZIP)

@@ -2,7 +2,8 @@
 import { accounts, authSecret, publicDemo } from "./auth";
 import { kvKind } from "./kv";
 import { emailProvider, smsProvider, devEcho } from "./otp";
-import { TRIAL_DAYS } from "./customers";
+import { DRAFT_DAYS } from "./customers";
+import { PLANS } from "./plans";
 
 export function settingsRows() {
   const e = process.env;
@@ -12,7 +13,9 @@ export function settingsRows() {
     { label: "حسابات الإدارة والديمو", value: accounts().map((a) => `${a.username} (${a.role === "admin" ? "إدارة" : "ديمو"})`).join("، ") || "لا يوجد" },
     { label: "الديمو العام بدون تسجيل", value: publicDemo() ? "مفعّل" : "متوقف", ok: true, hint: "PUBLIC_DEMO" },
     { label: "قاعدة البيانات (العملاء والتصاميم)", value: kv === "redis" ? "Upstash Redis" : kv === "file" ? "ملف محلي (تطوير)" : "غير مربوطة", ok: kv === "redis", hint: "اربط Upstash من Vercel ← Storage" },
-    { label: "مدة حفظ التصميم قبل الدفع", value: `${TRIAL_DAYS} يوماً`, hint: "TRIAL_DAYS" },
+    { label: "الباقات", value: `مرة واحدة ${PLANS.once.price} ر.س · شهري ${PLANS.monthly.price} ر.س`, hint: "NEXT_PUBLIC_PRICE_ONCE و NEXT_PUBLIC_PRICE_MONTHLY" },
+    { label: "حفظ المسودة غير المدفوعة", value: `${DRAFT_DAYS} أيام لإكمال الشراء (لا توجد فترة مجانية)`, hint: "DRAFT_DAYS" },
+    { label: "طريقة الدفع", value: process.env.NEXT_PUBLIC_PAYMENT_NOTE ? "تعليمات تحويل يدوي مضبوطة" : "يدوي — يطلب العميل التفعيل وتفعّله من «الطلبات والمدفوعات»", ok: !!process.env.NEXT_PUBLIC_PAYMENT_NOTE, hint: "NEXT_PUBLIC_PAYMENT_NOTE و NEXT_PUBLIC_WHATSAPP — بوابة الدفع لاحقاً" },
     { label: "التسجيل بالبريد", value: emailProvider() ? "Resend" : devEcho() ? "وضع تجربة (الرمز يظهر على الشاشة)" : "غير مفعّل", ok: !!emailProvider(), hint: "RESEND_API_KEY و MAIL_FROM" },
     { label: "التسجيل بالجوال", value: smsProvider() === "twilio" ? "Twilio" : smsProvider() === "unifonic" ? "Unifonic" : devEcho() ? "وضع تجربة (الرمز يظهر على الشاشة)" : "غير مفعّل", ok: !!smsProvider(), hint: "TWILIO_* أو UNIFONIC_APP_SID" },
     ...(e.OTP_DEV_ECHO === "true" && e.NODE_ENV === "production" ? [{ label: "تحذير أمني", value: "OTP_DEV_ECHO مفعّل في الإنتاج", ok: false, hint: "يعرض الرمز للزائر — أوقفه بعد تفعيل الإرسال" }] : []),

@@ -40,7 +40,7 @@ export default function SufraApp() {
           <div className="mr-auto"><AccountBar /></div>
         </div>
       </header>
-      <DemoNotice text="أنت في الديمو: جرّب كل شيء مجاناً، وسجّل ببريدك أو جوالك لتنشر المنيو ويبقى محفوظاً لك 30 يوماً." />
+      <DemoNotice text="أنت في الديمو: المعاينة مجانية بعلامة مائية، والتحميل والنشر بعد اختيار الباقة." />
       {mounted && (stage === "studio" && doc ? <Studio /> : <Onboarding />)}
       <ExportStage />
       <ExportOverlay />
