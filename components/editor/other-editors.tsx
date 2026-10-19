@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Check, Plus, RefreshCw, Upload } from "lucide-react";
 import { AiLogoTrial } from "./ai-trial";
+import { AiLogoButton } from "./ai-logos";
 import { NameCheckPanel } from "../name-check-panel";
 import { VENUE_TYPES } from "@/lib/templates";
 import { useMenu } from "@/store/menu-store";
@@ -68,6 +69,7 @@ export function BrandEditor() {
         </div>
         <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" hidden onChange={(e) => onFile(e.target.files?.[0])} />
         <p className="mt-2 text-[11px] leading-relaxed text-muted">عندك شعار؟ ارفعه بصيغة PNG شفاف أو SVG. أو اختر رمزاً مولّداً.</p>
+        <AiLogoButton />
         <div className="mt-2 grid grid-cols-2 gap-2">
           <Button size="sm" variant="outline" onClick={regenerateLogos}><RefreshCw className="h-3.5 w-3.5" /> رموز جديدة</Button>
           <Button size="sm" variant="outline" onClick={moreLogos} disabled={doc.brand.concepts.length >= 30}><Plus className="h-3.5 w-3.5" /> المزيد</Button>

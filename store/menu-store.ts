@@ -66,6 +66,7 @@ interface MenuState {
   setLogoImage: (dataUrl: string) => void;
   regenerateBrand: (keepLogo?: boolean) => void;
   regenerateLogos: () => void;
+  addConcepts: (c: import("@/lib/types").LogoConcept[]) => void;
   moreLogos: () => void;
 
   addCategory: () => void;
@@ -135,7 +136,8 @@ export const useMenu = create<MenuState>()(
           }),
 
         regenerateLogos: () =>
-          patchDoc((d) => ({ ...d, brand: { ...d.brand, concepts: newConcepts(d.venue, d.brand, freshSeed(d.id + "l")), logo: d.brand.logo.kind === "image" ? d.brand.logo : { kind: "concept", index: 0 } } })),
+          patchDoc((d) => ({ ...d, brand: { ...d.brand, concepts: [...d.brand.concepts.filter((c) => c.ai), ...newConcepts(d.venue, d.brand, freshSeed(d.id + "l"))], logo: d.brand.logo.kind === "image" ? d.brand.logo : { kind: "concept", index: 0 } } })),
+        addConcepts: (c) => patchDoc((d) => ({ ...d, brand: { ...d.brand, concepts: [...c, ...d.brand.concepts].slice(0, 40), logo: { kind: "concept", index: 0 } } })),
         moreLogos: () => patchDoc((d) => ({ ...d, brand: { ...d.brand, concepts: moreConcepts(d.venue, d.brand, freshSeed(d.id + d.brand.concepts.length)) } })),
 
         addCategory: () => patchCats((cs) => [...cs, { id: uid(), name: "قسم جديد", nameEn: "New section", items: [] }]),

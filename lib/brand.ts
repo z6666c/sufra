@@ -33,7 +33,7 @@ export function venuePalette(type: VenueType, seed: number, custom?: string) {
   return normalizePalette(raw, raw).palette;
 }
 
-function asIntake(venue: Venue): IntakeInput {
+export function asIntake(venue: Venue): IntakeInput {
   return {
     brandName: venue.name || "مطعمي",
     brandNameEn: venue.nameEn,

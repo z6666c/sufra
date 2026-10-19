@@ -46,7 +46,23 @@ function el(s: LogoShape, fill: string, fonts: SymbolFonts, defs: string[], forM
 }
 
 /** محتوى الرمز داخل مربع 0..100 — يدعم الاقتطاع (مساحة سالبة) والطبقة العلوية والنصوص */
+/** شعار SVG مولّد بالذكاء الاصطناعي داخل مربع 0..100 — معرفات فريدة لكل عرض، والأحادي عبر مرشّح لون */
+function aiSvgInner(concept: LogoConcept, mono: string | undefined, fonts: SymbolFonts): string {
+  const svg = concept.svg!;
+  const p = nextId("bfa");
+  const markup = svg.markup
+    .replace(/\bid="([^"]+)"/g, (_m, id) => `id="${p}-${id}"`)
+    .replace(/url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/g, (_m, id) => `url(#${p}-${id})`)
+    .replace(/(xlink:href|href)="#([^"]+)"/g, (_m, a, id) => `${a}="#${p}-${id}"`);
+  const font = `font-family:${fonts.ar}`;
+  const body = `<svg x="2" y="2" width="96" height="96" viewBox="${svg.viewBox}" preserveAspectRatio="xMidYMid meet" style="overflow:visible;${attrStyle(font)}">${markup}</svg>`;
+  if (!mono) return body;
+  const fid = `${p}-mono`;
+  return `<defs><filter id="${fid}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -0.2126 -0.7152 -0.0722 1 0" result="ink"/><feComponentTransfer in="ink" result="cut"><feFuncA type="discrete" tableValues="0 1 1 1 1 1 1 1 1 1 1 1"/></feComponentTransfer><feFlood flood-color="${mono}"/><feComposite in2="cut" operator="in"/></filter></defs><g filter="url(#${fid})">${body}</g>`;
+}
+
 export function symbolInner(concept: LogoConcept, colors: SymbolColors | null, mono?: string, fonts: SymbolFonts = symbolFonts()): string {
+  if (concept.svg) return aiSvgInner(concept, mono, fonts);
   const ink = mono ?? "#000";
   const color = (s: LogoShape) => (!mono && colors ? colors[s.role] : ink);
   const defs: string[] = [];

@@ -29,7 +29,15 @@ export interface IntakeInput {
   targetAudience: string;
   colorPreference: ColorPreference;
   customColor?: string; // HEX عند اختيار "تخصيص حر"
+  /** اختيارات الشعار الفرعية */
+  logoTypes?: LogoKind[];
+  likes?: string; // عناصر يحب العميل رؤيتها
+  avoid?: string; // عناصر يريد تجنبها
+  /** توليد مباشر بالذكاء الاصطناعي (افتراضي: نعم عند توفر المفاتيح) */
+  aiDirect?: boolean;
 }
+
+export type LogoKind = "symbol" | "lettermark" | "combo" | "emblem" | "pictorial";
 
 export interface SwatchFull {
   hex: string;
@@ -95,7 +103,7 @@ export interface LogoShape {
 
 export type LogoFamily =
   | "grid" | "star" | "arcs" | "facets" | "petals" | "bars" | "kufic"
-  | "letterBox" | "letterRing" | "monogram" | "seal" | "motif" | "motifBox" | "motifLetter" | "compose" | "nameDuo";
+  | "letterBox" | "letterRing" | "monogram" | "seal" | "motif" | "motifBox" | "motifLetter" | "compose" | "nameDuo" | "ai";
 
 export interface LogoConcept {
   id: string;
@@ -106,6 +114,9 @@ export interface LogoConcept {
   seed: number;
   shapes: LogoShape[]; // داخل مربع 0..100
   pattern: PatternSpec;
+  /** شعار مولّد بالذكاء الاصطناعي: SVG منظّف مع viewBox الخاص به */
+  svg?: { markup: string; viewBox: string };
+  ai?: { provider: "recraft" | "gemini"; kind?: LogoKind };
 }
 
 export interface PatternSpec {

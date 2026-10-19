@@ -31,7 +31,7 @@ const PATTERN_MODE: Partial<Record<LogoFamily, PatternSpec["mode"]>> = { grid: "
 
 export const FAMILY_LABEL: Record<LogoFamily, string> = {
   grid: "هندسي", star: "زخرفة إسلامية", arcs: "مدارات", facets: "منظوري", petals: "شعاعي", bars: "أعمدة", kufic: "كوفي مربع",
-  letterBox: "حرف الاسم", letterRing: "حرف ومدار", monogram: "مونوغرام", seal: "ختم", motif: "رمز النشاط", motifBox: "رمز في شكل", motifLetter: "رمز وحرف", compose: "تركيبي", nameDuo: "الاسم + النشاط",
+  letterBox: "حرف الاسم", letterRing: "حرف ومدار", monogram: "مونوغرام", seal: "ختم", motif: "رمز النشاط", motifBox: "رمز في شكل", motifLetter: "رمز وحرف", compose: "تركيبي", nameDuo: "الاسم + النشاط", ai: "ذكاء اصطناعي",
 };
 
 const sigOf = (r: FamilyResult) => hashString(JSON.stringify(r.shapes)).toString(36);
@@ -56,9 +56,20 @@ export function generateConcepts(input: IntakeInput, seed: number, exclude: Logo
   const plan: LogoFamily[][] = hasMeaning
     ? [DUO, COMPOSE, LETTER, MOTIF, COMPOSE, DUO, COMPOSE, LETTER, ABSTRACT, COMPOSE, MOTIF, COMPOSE]
     : [COMPOSE, LETTER, COMPOSE, MOTIF, COMPOSE, chance(rng, 0.5) ? LETTER : MOTIF, COMPOSE, ABSTRACT, COMPOSE, LETTER, MOTIF, COMPOSE];
+  // اختيار العميل لنوع الشعار يحصر العائلات المسموحة
+  const KIND_FAMILIES: Record<string, LogoFamily[]> = {
+    symbol: ["grid", "star", "arcs", "facets", "petals", "bars", "kufic", "compose"],
+    pictorial: ["motif", "motifBox", "nameDuo", "compose"],
+    lettermark: ["letterBox", "letterRing", "monogram"],
+    combo: ["motifLetter", "nameDuo", "compose", "letterBox"],
+    emblem: ["seal", "letterRing", "motifBox"],
+  };
+  const allowed = input.logoTypes?.length ? new Set(input.logoTypes.flatMap((k) => KIND_FAMILIES[k] ?? [])) : null;
   const out: LogoConcept[] = [];
-  for (let i = 0; out.length < count && i < count * 4; i++) {
-    const pool = plan[i % plan.length];
+  for (let i = 0; out.length < count && i < count * 6; i++) {
+    const basePool = plan[i % plan.length];
+    const narrowed = allowed ? basePool.filter((f) => allowed.has(f)) : basePool;
+    const pool = narrowed.length ? narrowed : allowed ? [...allowed] : basePool;
     const cands = pool
       .filter((fam) => (fam !== "monogram" || ctx.pairEn || ctx.pairAr) && (fam !== "nameDuo" || hasMeaning))
       .map((fam) => ({ item: fam, w: (weights[fam] ?? 1) * (exclude.includes(fam) && fam !== "compose" ? 0.35 : 1) / (1 + (fam === "compose" ? 0 : 2.5) * (used.get(fam) ?? 0)) }));
@@ -70,6 +81,11 @@ export function generateConcepts(input: IntakeInput, seed: number, exclude: Logo
     seenSet.add(c.signature!);
     used.set(family, (used.get(family) ?? 0) + 1);
     out.push(c);
+  }
+  // احتياط: إذا ضيّق نوع الشعار الخيارات كثيراً نكمل من بقية العائلات
+  if (allowed && out.length < Math.min(count, 3)) {
+    const rest = generateConcepts({ ...input, logoTypes: [] }, seed ^ 0x5bd1e995, exclude, count - out.length, [...seenSet]);
+    return [...out, ...rest];
   }
   return out;
 }
