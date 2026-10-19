@@ -1,11 +1,16 @@
 "use client";
 import * as React from "react";
 
-export function LoginForm({ demo, next }: { demo: { username: string; password: string } | null; next: string }) {
+export function LoginForm({ demo, next, status }: { demo: { username: string; password: string } | null; next: string; status: { secret: boolean; admin: boolean; publicDemo: boolean } }) {
   const [username, setU] = React.useState("");
   const [password, setP] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const enterDemo = () => {
+    // الديمو العام لا يحتاج جلسة: الزائر يُعامل كحساب ديمو تلقائياً
+    if (status.publicDemo) { window.location.href = "/"; return; }
+    if (demo) login(demo.username, demo.password);
+  };
   const login = async (u = username, p = password) => {
     setBusy(true); setError(null);
     try {
@@ -31,12 +36,20 @@ export function LoginForm({ demo, next }: { demo: { username: string; password: 
           <span className="mb-1 block text-xs text-muted">كلمة المرور</span>
           <input type="password" value={password} onChange={(e) => setP(e.target.value)} autoComplete="current-password" dir="ltr" className="h-11 w-full rounded-xl border border-line px-3.5 outline-none focus:border-ink/40" />
         </label>
+        {(!status.secret || !status.admin) && (
+          <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+            حساب الإدارة غير مفعّل بعد على هذا الخادم. أضف في إعدادات Vercel (Environment Variables):{" "}
+            {!status.secret && <b dir="ltr">AUTH_SECRET</b>}{!status.secret && !status.admin && " و "}{!status.admin && <b dir="ltr">ADMIN_PASSWORD</b>} ثم أعد النشر.
+          </div>
+        )}
         {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <button disabled={busy || !username || !password} className="h-11 w-full rounded-xl bg-ink font-medium text-paper disabled:opacity-50">{busy ? "..." : "دخول"}</button>
-        {demo && (
+        {(demo || status.publicDemo) && (
           <div className="mt-5 rounded-xl border border-dashed border-line p-3 text-center">
-            <div className="mb-2 text-xs text-muted">تبغى تجرب؟ حساب الديمو: <b dir="ltr">{demo.username}</b> / <b dir="ltr">{demo.password}</b></div>
-            <button type="button" disabled={busy} onClick={() => login(demo.username, demo.password)} className="h-9 w-full rounded-lg bg-ink/5 text-sm font-medium hover:bg-ink/10">دخول كحساب ديمو</button>
+            <div className="mb-2 text-xs text-muted">
+              {status.publicDemo ? "تبغى تجرب؟ الديمو مفتوح بدون تسجيل." : <>تبغى تجرب؟ حساب الديمو: <b dir="ltr">{demo?.username}</b> / <b dir="ltr">{demo?.password}</b></>}
+            </div>
+            <button type="button" disabled={busy} onClick={enterDemo} className="h-9 w-full rounded-lg bg-ink/5 text-sm font-medium hover:bg-ink/10">دخول كحساب ديمو</button>
           </div>
         )}
       </form>
