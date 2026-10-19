@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, readToken } from "@/lib/auth";
 import { kvAvailable } from "@/lib/kv";
+import { checkStaff } from "@/lib/api-guard";
 import { settingsRows } from "@/lib/admin-settings";
 import { listMenus } from "@/lib/storage";
 import { VENUE_TYPES } from "@/lib/templates";
@@ -13,12 +14,13 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const s = await readToken((await cookies()).get(SESSION_COOKIE)?.value);
-  if (s?.r !== "admin") redirect("/login?next=/admin");
+  if (await checkStaff(s, "read")) redirect("/login?next=/admin");
+  const me = { username: s!.u, owner: !s!.m, level: s!.m ? (s!.lv ?? "viewer") : ("owner" as const) };
   const menus = await listMenus().catch(() => []);
   const labels = Object.fromEntries(VENUE_TYPES.map((v) => [v.id, v.label]));
   const storeRow = { label: "تخزين المنيوهات المنشورة", value: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL ? "Upstash Redis" : "ملفات محلية (لا تبقى على Vercel)", ok: !!(process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL) };
   return (
-    <AdminDashboard
+    <AdminDashboard me={me}
       brand="سُفرة — منيو وهوية المطاعم"
       settings={[...settingsRows(), storeRow]}
       kvReady={kvAvailable()}

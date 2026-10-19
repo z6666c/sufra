@@ -30,7 +30,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(req: Request, { params }: Ctx) {
-  const g = await requireAdmin(req);
+  const g = await requireAdmin(req, "owner");
   if (g instanceof Response) return g;
   return (await deleteCustomer((await params).id)) ? json({ ok: true }) : json({ error: "غير موجود" }, 404);
 }

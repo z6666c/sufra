@@ -1,7 +1,9 @@
 // الحسابات والجلسات: حساب إدارة + حساب ديمو (بدون قاعدة بيانات)
 // - بيانات الدخول من متغيرات البيئة، والجلسة كعكة موقّعة HMAC-SHA256 (Web Crypto: تعمل في proxy والخادم)
 export type Role = "admin" | "demo" | "customer";
-export interface Session { u: string; r: Role; exp: number }
+export type TeamLevel = "manager" | "viewer";
+/** m = عضو فريق (غير المالك)، v = نسخة صلاحيته، lv = مستواه */
+export interface Session { u: string; r: Role; exp: number; m?: 1; v?: number; lv?: TeamLevel }
 
 export const SESSION_COOKIE = "sufra_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // أسبوع
@@ -60,10 +62,10 @@ export async function verifyLogin(username: string, password: string): Promise<A
 }
 
 export const CUSTOMER_MAX_AGE = 60 * 60 * 24 * 30;
-export async function createToken(acc: { username: string; role: Role }, maxAge = acc.role === "customer" ? CUSTOMER_MAX_AGE : MAX_AGE): Promise<string> {
+export async function createToken(acc: { username: string; role: Role; member?: { v: number; level: TeamLevel } }, maxAge = acc.role === "customer" ? CUSTOMER_MAX_AGE : MAX_AGE): Promise<string> {
   const secret = authSecret();
   if (!secret) throw new Error("AUTH_SECRET_MISSING");
-  const body = b64url(enc.encode(JSON.stringify({ u: acc.username, r: acc.role, exp: Math.floor(Date.now() / 1000) + maxAge } satisfies Session)));
+  const body = b64url(enc.encode(JSON.stringify({ u: acc.username, r: acc.role, exp: Math.floor(Date.now() / 1000) + maxAge, ...(acc.member ? { m: 1 as const, v: acc.member.v, lv: acc.member.level } : {}) } satisfies Session)));
   return `${body}.${await hmac(secret, body)}`;
 }
 
@@ -76,7 +78,8 @@ export async function readToken(token?: string | null): Promise<Session | null> 
     const s = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Session;
     if (s.exp < Date.now() / 1000 || (s.r !== "admin" && s.r !== "demo" && s.r !== "customer")) return null;
     // حسابات الإدارة والديمو قد تُعطَّل لاحقاً من البيئة؛ العملاء محفوظون في قاعدة البيانات
-    if (s.r !== "customer" && !accounts().some((a) => a.username === s.u && a.role === s.r)) return null;
+    // أعضاء الفريق يُتحقق منهم من قاعدة البيانات في requireAdmin وصفحة الإدارة
+    if (s.r !== "customer" && !s.m && !accounts().some((a) => a.username === s.u && a.role === s.r)) return null;
     return s;
   } catch {
     return null;
@@ -95,5 +98,8 @@ export async function sessionFromRequest(req: Request): Promise<Session | null> 
   const s = await readToken(m ? decodeURIComponent(m.slice(SESSION_COOKIE.length + 1)) : null);
   return s ?? (publicDemo() ? guestSession() : null);
 }
+
+/** المالك = حساب الإدارة من متغيرات البيئة (ليس عضو فريق) */
+export const isOwner = (s: Session | null | undefined) => s?.r === "admin" && !s.m;
 
 export const cookieOptions = { httpOnly: true, sameSite: "lax" as const, secure: isProd(), path: "/", maxAge: MAX_AGE };

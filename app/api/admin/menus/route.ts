@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { sessionFromRequest } from "@/lib/auth";
+import { checkStaff } from "@/lib/api-guard";
 import { deleteMenu, listMenus } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
 async function guard(req: Request) {
-  const s = await sessionFromRequest(req);
-  return s?.r === "admin" ? null : NextResponse.json({ error: "للإدارة فقط" }, { status: 403 });
+  const err = await checkStaff(await sessionFromRequest(req), req.method === "GET" ? "read" : "write");
+  return err ? NextResponse.json({ error: err }, { status: 403 }) : null;
 }
 
 export async function GET(req: Request) {

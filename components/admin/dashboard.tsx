@@ -4,7 +4,12 @@ import * as React from "react";
 import { PLANS, type PlanKind } from "@/lib/plans";
 
 type Customer = { id: string; email?: string; phone?: string; name?: string; status: "trial" | "paid"; createdAt: number; lastLoginAt: number; trialEndsAt: number; note?: string; designs: number; example?: boolean };
-type Paid = { plan: PlanKind; at: number; amount: number; until?: number | null; ref?: string } | null;
+type Paid = { plan: PlanKind; at: number; amount: number; until?: number | null; ref?: string; by?: string } | null;
+export type AdminMe = { username: string; owner: boolean; level: "owner" | "manager" | "viewer" };
+const MeCtx = React.createContext<AdminMe>({ username: "", owner: true, level: "owner" });
+const useCanWrite = () => React.useContext(MeCtx).level !== "viewer";
+const useIsOwner = () => React.useContext(MeCtx).owner;
+const LEVELS: Record<AdminMe["level"], string> = { owner: "المالك", manager: "مشرف", viewer: "مشاهد" };
 type Design = { id: string; customerId: string; owner?: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number; paid?: Paid; paymentRequestedAt?: number | null; requestedPlan?: PlanKind | null; example?: boolean };
 const isPaid = (d: Design) => !!d.paid && (!d.paid.until || d.paid.until > Date.now());
 const planLabel = (k?: PlanKind | null) => (k === "monthly" ? "شهري" : "مرة واحدة");
@@ -108,6 +113,7 @@ function OverviewTab() {
 }
 
 function CustomersTab() {
+  const canWrite = useCanWrite(); const isOwner = useIsOwner();
   const [rows, setRows] = React.useState<Customer[] | null>(null);
   const [q, setQ] = React.useState("");
   const [err, setErr] = React.useState("");
@@ -156,13 +162,13 @@ function CustomersTab() {
                     <td className="p-3 text-xs text-muted">{date(c.createdAt)}</td>
                     <td className="p-3 text-xs text-muted">{date(c.lastLoginAt)}</td>
                     <td className="p-3">
-                      <div className="flex flex-wrap justify-end gap-1">
+                      {canWrite && <div className="flex flex-wrap justify-end gap-1">
                         {c.status !== "paid" && c.designs > 0 && <button disabled={busy === c.id} onClick={() => act(c.id, { action: "paid" })} title="يفعّل كل تصاميم العميل بباقة المرة الواحدة" className="rounded-lg bg-emerald-600 px-2 py-1 text-xs text-white">تفعيل كل تصاميمه</button>}
                         <button disabled={busy === c.id} onClick={() => { const n = prompt("ملاحظة عن العميل", c.note ?? ""); if (n !== null) act(c.id, { note: n }); }} className="rounded-lg px-2 py-1 text-xs text-muted hover:bg-ink/5">ملاحظة</button>
-                        {confirm === c.id
+                        {isOwner && (confirm === c.id
                           ? <button disabled={busy === c.id} onClick={() => del(c.id)} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
-                          : <button onClick={() => setConfirm(c.id)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
-                      </div>
+                          : <button onClick={() => setConfirm(c.id)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>)}
+                      </div>}
                     </td>
                   </tr>
                 );
@@ -176,6 +182,7 @@ function CustomersTab() {
 }
 
 function DesignsTab() {
+  const canWrite = useCanWrite();
   const [rows, setRows] = React.useState<Design[] | null>(null);
   const [err, setErr] = React.useState("");
   const [filter, setFilter] = React.useState<"all" | "paid" | "expiring">("all");
@@ -211,8 +218,8 @@ function DesignsTab() {
                     <td className="p-3 text-left">
                       <span className="inline-flex flex-wrap justify-end gap-1">
                         <ActivateButtons d={d} onDone={load} />
-                        {confirm === d.id ? <button onClick={() => del(d.id)} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
-                          : <button onClick={() => setConfirm(d.id)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
+                        {canWrite && (confirm === d.id ? <button onClick={() => del(d.id)} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
+                          : <button onClick={() => setConfirm(d.id)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>)}
                       </span>
                     </td>
                   </tr>
@@ -237,12 +244,14 @@ function PayStatus({ d }: { d: Design }) {
 /** أزرار التفعيل: شهري أو مرة واحدة، وتجديد/إلغاء للمدفوع */
 function ActivateButtons({ d, onDone }: { d: Design; onDone: () => void }) {
   const [busy, setBusy] = React.useState(false);
+  const canWrite = useCanWrite();
   const go = async (body: object, ask?: string) => {
     let ref: string | null = "";
     if (ask) { ref = prompt(ask, ""); if (ref === null) return; }
     setBusy(true);
     try { await api(`/api/admin/designs/${d.id}`, { method: "PATCH", body: JSON.stringify({ ...body, ref: ref || undefined }) }); onDone(); } finally { setBusy(false); }
   };
+  if (!canWrite) return null;
   if (isPaid(d)) return (
     <>
       {d.paid!.plan === "monthly" && <button disabled={busy} onClick={() => go({ action: "paid", plan: "monthly" }, "رقم العملية للتجديد (اختياري)")} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">تجديد شهر</button>}
@@ -279,7 +288,7 @@ function PaymentsTab() {
               <td className="p-3 font-medium">{d.title}{d.example && <span className="ms-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">مثال</span>}</td>
               <td className="p-3 text-xs" dir="ltr" style={{ textAlign: "right" }}>{d.owner}</td>
               <td className="p-3 text-xs">{kind === "pending" ? `${planLabel(d.requestedPlan)} · ${d.requestedPlan === "monthly" ? PLANS.monthly.price : PLANS.once.price} ر.س` : <PayStatus d={d} />}</td>
-              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}`}</td>
+              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
               <td className="p-3 text-left"><span className="inline-flex flex-wrap justify-end gap-1"><ActivateButtons d={d} onDone={load} /></span></td>
             </tr>
           ))}
@@ -300,6 +309,108 @@ function PaymentsTab() {
         <h3 className="mb-2 text-sm font-semibold">المدفوعات ({fmt(paid.length)})</h3>
         {paid.length ? table(paid, "paid") : <Empty text="لا توجد مدفوعات بعد." />}
       </section>
+    </div>
+  );
+}
+
+function genPassword() {
+  const a = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(14)), (x) => a[x % a.length]).join("");
+}
+type Member = { username: string; name: string; level: "manager" | "viewer"; disabled?: boolean; createdAt: number; lastLoginAt?: number };
+function TeamTab() {
+  const [data, setData] = React.useState<{ owner: string; members: Member[] } | null>(null);
+  const [err, setErr] = React.useState("");
+  const [form, setForm] = React.useState({ username: "", name: "", password: genPassword(), level: "manager" as Member["level"] });
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [created, setCreated] = React.useState<{ username: string; password: string } | null>(null);
+  const [confirm, setConfirm] = React.useState<string | null>(null);
+  const load = React.useCallback(() => { api<{ owner: string; members: Member[] }>("/api/admin/team").then(setData).catch((e) => setErr(e.message)); }, []);
+  React.useEffect(() => { load(); }, [load]);
+  const run = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id); setErr("");
+    try { await fn(); load(); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  };
+  const add = (e: React.FormEvent) => {
+    e.preventDefault();
+    run("add", async () => {
+      await api("/api/admin/team", { method: "POST", body: JSON.stringify(form) });
+      setCreated({ username: form.username.trim().toLowerCase(), password: form.password });
+      setForm({ username: "", name: "", password: genPassword(), level: "manager" });
+    });
+  };
+  const patch = (u: string, body: object) => run(u, () => api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify(body) }));
+  const resetPw = (u: string) => {
+    const pw = genPassword();
+    run(u, async () => { await api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify({ password: pw }) }); setCreated({ username: u, password: pw }); });
+  };
+  if (!data && !err) return <Loading />;
+  const inp = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-ink/40";
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
+        أضف من يساعدك في الإدارة. <b>الملكية لك وحدك</b>: حسابك (المالك) ثابت من إعدادات الخادم ولا يقدر أحد يعدّله أو يحذفه، وإضافة الأعضاء وحذفهم وحذف العملاء لك فقط.
+        <br />• <b>مشرف</b>: يشوف كل شيء ويفعّل الطلبات ويجدد ويدير العملاء والتصاميم. • <b>مشاهد</b>: يشوف فقط بدون أي تعديل.
+        <br />تغيير الصلاحية أو كلمة المرور أو الإيقاف يُخرج العضو من جلسته فوراً.
+      </div>
+      {err && <Problem text={err} />}
+      {created && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          أرسل للعضو بيانات الدخول (تظهر مرة واحدة فقط): رابط الدخول <b dir="ltr">{typeof window !== "undefined" ? `${location.origin}/login` : "/login"}</b> · اسم المستخدم <b dir="ltr" className="font-latin">{created.username}</b> · كلمة المرور <b dir="ltr" className="font-latin">{created.password}</b>
+          <button onClick={() => { navigator.clipboard?.writeText(`${location.origin}/login\n${created.username}\n${created.password}`).catch(() => {}); }} className="ms-2 rounded-lg border border-emerald-300 bg-white px-2 py-0.5 text-xs">نسخ</button>
+          <button onClick={() => setCreated(null)} className="ms-1 rounded-lg px-2 py-0.5 text-xs">إخفاء</button>
+        </div>
+      )}
+      <form onSubmit={add} className="grid gap-3 rounded-2xl border border-line bg-white p-4 md:grid-cols-[1fr_1fr_1.2fr_auto_auto] md:items-end">
+        <label className="text-xs text-muted">اسم المستخدم (إنجليزي)<input required dir="ltr" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="sara" className={inp} /></label>
+        <label className="text-xs text-muted">الاسم<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="سارة" className={inp} /></label>
+        <label className="text-xs text-muted">كلمة المرور
+          <span className="flex gap-1"><input required minLength={8} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inp + " font-latin"} />
+            <button type="button" onClick={() => setForm({ ...form, password: genPassword() })} className="h-10 shrink-0 rounded-xl border border-line px-2 text-xs">توليد</button></span>
+        </label>
+        <label className="text-xs text-muted">الصلاحية
+          <select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value as Member["level"] })} className={inp}>
+            <option value="manager">مشرف</option><option value="viewer">مشاهد</option>
+          </select>
+        </label>
+        <button disabled={busy === "add"} className="h-10 rounded-xl bg-ink px-4 text-sm text-paper">{busy === "add" ? "…" : "إضافة عضو"}</button>
+      </form>
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-muted"><tr className="border-b border-line text-right">
+            <th className="p-3 font-medium">العضو</th><th className="p-3 font-medium">الصلاحية</th><th className="p-3 font-medium">الحالة</th><th className="p-3 font-medium">آخر دخول</th><th className="p-3" />
+          </tr></thead>
+          <tbody>
+            <tr className="border-b border-line bg-amber-50/40">
+              <td className="p-3 font-medium"><span dir="ltr" className="font-latin">{data?.owner}</span> <span className="text-xs text-muted">(أنت)</span></td>
+              <td className="p-3"><span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">المالك</span></td>
+              <td className="p-3 text-xs text-muted">ثابت — يُدار من إعدادات الخادم</td><td className="p-3" /><td className="p-3" />
+            </tr>
+            {data?.members.map((m) => (
+              <tr key={m.username} className="border-b border-line last:border-0">
+                <td className="p-3"><div className="font-medium">{m.name}</div><div dir="ltr" className="text-right font-latin text-xs text-muted">{m.username}</div></td>
+                <td className="p-3">
+                  <select disabled={busy === m.username} value={m.level} onChange={(e) => patch(m.username, { level: e.target.value })} className="rounded-lg border border-line bg-white px-2 py-1 text-xs">
+                    <option value="manager">مشرف</option><option value="viewer">مشاهد</option>
+                  </select>
+                </td>
+                <td className="p-3 text-xs">{m.disabled ? <span className="font-semibold text-red-600">موقوف</span> : <span className="text-emerald-700">فعّال</span>}</td>
+                <td className="p-3 text-xs text-muted">{m.lastLoginAt ? date(m.lastLoginAt) : "لم يدخل بعد"}</td>
+                <td className="p-3 text-left">
+                  <span className="inline-flex flex-wrap justify-end gap-1">
+                    <button disabled={busy === m.username} onClick={() => resetPw(m.username)} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">كلمة مرور جديدة</button>
+                    <button disabled={busy === m.username} onClick={() => patch(m.username, { disabled: !m.disabled })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{m.disabled ? "تفعيل" : "إيقاف"}</button>
+                    {confirm === m.username
+                      ? <button onClick={() => { setConfirm(null); run(m.username, () => api(`/api/admin/team/${encodeURIComponent(m.username)}`, { method: "DELETE" })); }} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
+                      : <button onClick={() => setConfirm(m.username)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data && !data.members.length && <div className="p-4 text-center text-xs text-muted">لا يوجد أعضاء بعد — أنت المالك والوحيد في اللوحة.</div>}
+      </div>
     </div>
   );
 }
@@ -368,10 +479,11 @@ const Loading = () => <div className="py-10 text-center text-sm text-muted">يح
 const Empty = ({ text }: { text: string }) => <div className="rounded-2xl border border-dashed border-line py-10 text-center text-sm text-muted">{text}</div>;
 const Problem = ({ text }: { text: string }) => <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{text}</div>;
 
-export function AdminDashboard({ brand, settings, extraTabs = [], kvReady }: { brand: string; settings: SettingRow[]; extraTabs?: { id: string; label: string; node: React.ReactNode }[]; kvReady: boolean }) {
+export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = { username: "", owner: true, level: "owner" } }: { brand: string; settings: SettingRow[]; extraTabs?: { id: string; label: string; node: React.ReactNode }[]; kvReady: boolean; me?: AdminMe }) {
   const tabs = [
     { id: "overview", label: "نظرة عامة" }, { id: "payments", label: "الطلبات والمدفوعات" }, { id: "customers", label: "العملاء" }, { id: "designs", label: "التصاميم" },
-    ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" }, { id: "settings", label: "الإعدادات" },
+    ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" },
+    ...(me.owner ? [{ id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
   ];
   const [tab, setTab] = React.useState("overview");
   const [ver, setVer] = React.useState(0);
@@ -387,14 +499,16 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady }: { b
   };
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; };
   return (
+    <MeCtx.Provider value={me}>
     <main className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-xs text-muted">{brand}</div>
           <h1 className="font-display text-2xl font-bold">لوحة التحكم</h1>
+          {me.username && <div className="mt-1 text-xs text-muted">دخلت باسم <b dir="ltr" className="font-latin text-ink">{me.username}</b> · <span className={me.owner ? "text-amber-700" : ""}>{LEVELS[me.level]}</span>{me.level === "viewer" && " (مشاهدة فقط)"}</div>}
         </div>
         <div className="flex gap-2">
-          {kvReady && examples !== null && (
+          {kvReady && examples !== null && me.level !== "viewer" && (
             <button onClick={toggleExamples} disabled={exBusy} className={`rounded-xl px-4 py-2 text-sm ${examples ? "border border-red-200 bg-red-50 text-red-700" : "border border-sky-200 bg-sky-50 text-sky-800"}`}>
               {exBusy ? "…" : examples ? "حذف البيانات التجريبية" : "إضافة بيانات تجريبية"}
             </button>
@@ -414,8 +528,10 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady }: { b
       {tab === "customers" && (kvReady ? <CustomersTab key={ver} /> : <Empty text="يظهر العملاء بعد ربط قاعدة البيانات." />)}
       {tab === "designs" && (kvReady ? <DesignsTab key={ver} /> : <Empty text="تظهر التصاميم بعد ربط قاعدة البيانات." />)}
       {tab === "usage" && (kvReady ? <UsageTab key={ver} /> : <Empty text="يظهر الاستخدام بعد ربط قاعدة البيانات." />)}
-      {tab === "settings" && <SettingsTab rows={settings} />}
+      {tab === "settings" && me.owner && <SettingsTab rows={settings} />}
+      {tab === "team" && me.owner && (kvReady ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
       {extraTabs.map((t) => tab === t.id && <div key={t.id}>{t.node}</div>)}
     </main>
+    </MeCtx.Provider>
   );
 }
