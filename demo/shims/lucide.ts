@@ -22,7 +22,7 @@ export {
   LuMegaphone as Megaphone,
   LuPalette as Palette,
   LuPhone as Phone,
-  LuPlus as Plus, LuFlaskConical as FlaskConical,
+  LuPlus as Plus, LuSave as Save, LuFlaskConical as FlaskConical,
   LuPrinter as Printer,
   LuQrCode as QrCode,
   LuRefreshCw as RefreshCw,

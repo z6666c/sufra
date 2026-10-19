@@ -1,4 +1,5 @@
 "use client";
+import { ensureAccount, isCustomer } from "../account/account-client";
 import * as React from "react";
 import { Copy, Download, ExternalLink, FileArchive, Globe, Printer, QrCode, Send } from "lucide-react";
 import { allItems, useMenu } from "@/store/menu-store";
@@ -47,7 +48,11 @@ export function DigitalTab() {
           <div className="mb-1 flex items-center gap-2 text-xs font-medium text-ember"><Globe className="h-3.5 w-3.5" /> المنيو الرقمي</div>
           <h3 className="mb-2 font-display text-xl font-bold">انشر المنيو واطبع رمز QR</h3>
           <p className="mb-5 text-sm leading-relaxed text-muted">تحصل على رابط ثابت لمنيوك. أي تعديل لاحق في الأسعار أو الأصناف تنشره بضغطة واحدة، والرمز المطبوع على الطاولات يبقى كما هو.</p>
-          <Button variant="ember" disabled={busy} onClick={() => run(async () => { const r = await publishMenu(doc, published); setPublished({ ...r, at: new Date().toISOString() }); })}>
+          <Button variant="ember" disabled={busy} onClick={() => run(async () => {
+            if (!(await ensureAccount("لنشر المنيو الرقمي برابط ورمز QR."))) return;
+            const r = await publishMenu(doc, published); setPublished({ ...r, at: new Date().toISOString() });
+            if (isCustomer()) await useMenu.getState().saveToAccount();
+          })}>
             <Send className="h-4 w-4" /> {published ? "نشر التحديثات" : "انشر المنيو"}
           </Button>
           {msg && <div className="mt-4"><Note kind="warn">{msg}</Note></div>}
@@ -196,7 +201,11 @@ export function ExportTab() {
         <li>• رمز QR ورابط المنيو الرقمي، وملفات الشعار، وبيانات المنيو JSON</li>
       </ul>
       {!published && <div className="mb-4"><Note kind="warn">المنيو غير منشور بعد، فستخرج البطاقة ومنشور أوقات العمل بدون رمز QR.</Note></div>}
-      <Button variant="ember" size="lg" disabled={busy} onClick={() => run(async () => { const w = await exportAll(); setMsg(w.length ? w.join("، ") : null); })}>
+      <Button variant="ember" size="lg" disabled={busy} onClick={() => run(async () => {
+          if (!(await ensureAccount("لتحميل حزمة ملفات مطعمك."))) return;
+          if (isCustomer()) await useMenu.getState().saveToAccount();
+          const w = await exportAll(); setMsg(w.length ? w.join("، ") : null);
+        })}>
         <FileArchive className="h-5 w-5" /> تنزيل الحزمة (ZIP)
       </Button>
       {msg && <div className="mt-4"><Note kind="warn">{msg}</Note></div>}

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const out = path.join(root, "demo/dist");
+const out = path.join(root, process.env.DEMO_OUT || "demo/dist");
 fs.mkdirSync(out, { recursive: true });
 const NM = "/opt/npm-tools/node_modules";
 
@@ -20,7 +20,7 @@ const res = await build({
     "framer-motion": path.join(root, "demo/shims/framer-motion.tsx"),
     "lucide-react": path.join(root, "demo/shims/lucide.ts"),
   },
-  define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_SUFRA_DEMO": '"1"' },
+  define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_SUFRA_DEMO": JSON.stringify(process.env.PREVIEW_FLAG ?? "1") },
   logLevel: "warning",
 });
 const js = res.outputFiles[0].text;

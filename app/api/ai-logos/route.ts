@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { stat } from "@/lib/customers";
 import type { IntakeInput, Palette } from "@/lib/types";
 import { aiLogoProvider, generateAiLogos } from "@/lib/ai-logo";
 import { sessionFromRequest } from "@/lib/auth";
@@ -23,6 +24,8 @@ export async function POST(req: Request) {
   try {
     const { provider, concepts } = await generateAiLogos({ input: body.input, palette: body.palette, count }, AbortSignal.timeout(85_000));
     if (!concepts.length) return NextResponse.json({ error: "لم يرجع الذكاء الاصطناعي شعارات صالحة، جرّب مرة أخرى" }, { status: 502 });
+    await stat("ai_logos");
+    await stat(provider === "recraft" ? "ai_logo_image" : "ai_identity", provider === "recraft" ? concepts.length : 1);
     return NextResponse.json({ provider, concepts });
   } catch (e) {
     console.error("[ai-logos]", e instanceof Error ? e.message : e);

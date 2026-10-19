@@ -1,4 +1,5 @@
 "use client";
+import { AccountModals } from "./account/account-modals";
 import { AccountBar, DemoNotice } from "./account-bar";
 import * as React from "react";
 import { useMenu } from "@/store/menu-store";
@@ -39,10 +40,11 @@ export default function SufraApp() {
           <div className="mr-auto"><AccountBar /></div>
         </div>
       </header>
-      <DemoNotice text="أنت في حساب الديمو: جرّب المنيو والهوية والتصدير بحرية — النشر واقتراحات الذكاء المدفوعة متاحة لحساب الإدارة." />
+      <DemoNotice text="أنت في الديمو: جرّب كل شيء مجاناً، وسجّل ببريدك أو جوالك لتنشر المنيو ويبقى محفوظاً لك 30 يوماً." />
       {mounted && (stage === "studio" && doc ? <Studio /> : <Onboarding />)}
       <ExportStage />
       <ExportOverlay />
+      <AccountModals onOpenDesign={async (d) => { await useMenu.getState().loadSaved(d.id); }} />
     </div>
   );
 }

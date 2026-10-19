@@ -57,6 +57,11 @@ interface MenuState {
   setPublished: (p: Publish | null) => void;
   setSocialItem: (id: string | null) => void;
   setOfferText: (t: string) => void;
+  /** المنيو المحفوظ في حساب العميل */
+  saved: { id: string; expiresAt: number | null; at: number } | null;
+  saveState: "idle" | "saving" | "error";
+  saveToAccount: () => Promise<{ ok: boolean; error?: string }>;
+  loadSaved: (id: string) => Promise<void>;
 
   updateVenue: (p: Partial<Venue>) => void;
   updateSettings: (p: Partial<MenuSettings>) => void;
@@ -108,11 +113,32 @@ export const useMenu = create<MenuState>()(
         published: null,
         socialItemId: null,
         offerText: "خصم\n20%",
+        saved: null,
+        saveState: "idle",
+        saveToAccount: async () => {
+          const { doc, published, offerText, saved } = get();
+          if (!doc) return { ok: false };
+          set({ saveState: "saving" });
+          try {
+            const { saveDesignRemote } = await import("@/components/account/account-client");
+            const d = await saveDesignRemote({ id: saved?.id, title: doc.venue.name || "منيو", kind: "menu", data: { v: 1, doc, published, offerText } });
+            set({ saved: { id: d.id, expiresAt: d.expiresAt, at: Date.now() }, saveState: "idle" });
+            return { ok: true };
+          } catch (e) {
+            set({ saveState: "error" });
+            return { ok: false, error: (e as Error).message };
+          }
+        },
+        loadSaved: async (id) => {
+          const { loadDesignRemote } = await import("@/components/account/account-client");
+          const d = await loadDesignRemote<{ doc: MenuDoc; published: Publish | null; offerText: string }>(id);
+          set({ doc: d.data.doc, published: d.data.published ?? null, offerText: d.data.offerText ?? get().offerText, saved: { id: d.id, expiresAt: d.expiresAt, at: Date.now() }, stage: "studio", outTab: "digital", edTab: "menu" });
+        },
 
         start: (type, name, nameEn, city, logo) => {
           const doc = newDoc(type, name, nameEn, city);
           if (logo) doc.brand.logo = { kind: "image", dataUrl: logo };
-          set({ doc, stage: "studio", outTab: "digital", edTab: "menu", published: null, socialItemId: null });
+          set({ doc, stage: "studio", outTab: "digital", edTab: "menu", published: null, socialItemId: null, saved: null });
         },
         reset: () => set({ stage: "onboarding" }),
         setOutTab: (outTab) => set({ outTab }),
@@ -159,7 +185,7 @@ export const useMenu = create<MenuState>()(
         replaceCategories: (cats) => patchCats(() => cats),
       };
     },
-    { name: "sufra-v1", partialize: (s) => ({ stage: s.stage, outTab: s.outTab, edTab: s.edTab, doc: s.doc, published: s.published, offerText: s.offerText, socialItemId: s.socialItemId }) },
+    { name: "sufra-v1", partialize: (s) => ({ stage: s.stage, outTab: s.outTab, edTab: s.edTab, doc: s.doc, published: s.published, offerText: s.offerText, socialItemId: s.socialItemId, saved: s.saved }) },
   ),
 );
 

@@ -1,6 +1,7 @@
 "use client";
+import { daysLeft, ensureAccount, useAccount } from "../account/account-client";
 import * as React from "react";
-import { ArrowRight, Globe, Megaphone, LayoutList, Palette, Printer, QrCode, Settings2, SlidersHorizontal, Store, FileArchive } from "lucide-react";
+import { ArrowRight, Globe, Megaphone, LayoutList, Palette, Printer, QrCode, Settings2, SlidersHorizontal, Store, FileArchive, Save } from "lucide-react";
 import { useMenu, type EditorTab, type OutputTab } from "@/store/menu-store";
 import { fontStack } from "@/lib/fonts";
 import { Mark } from "../brand-mark";
@@ -29,6 +30,23 @@ export function Studio() {
   const outTab = useMenu((s) => s.outTab);
   const { setEdTab, setOutTab, reset } = useMenu.getState();
   const [drawer, setDrawer] = React.useState(false);
+  const saved = useMenu((s) => s.saved);
+  const saveState = useMenu((s) => s.saveState);
+  const published = useMenu((s) => s.published);
+  const { me } = useAccount();
+  const customer = me?.role === "customer";
+  const [saveMsg, setSaveMsg] = React.useState("");
+  // حفظ تلقائي بعد كل تعديل للعميل المسجّل
+  React.useEffect(() => {
+    if (!customer || !saved) return;
+    const t = setTimeout(() => { useMenu.getState().saveToAccount(); }, 4000);
+    return () => clearTimeout(t);
+  }, [doc, published, customer, saved?.id]);
+  const saveNow = async () => {
+    if (!(await ensureAccount("لحفظ منيو مطعمك والرجوع له من أي جهاز."))) return;
+    const r = await useMenu.getState().saveToAccount();
+    setSaveMsg(r.ok ? "" : r.error ?? "تعذر الحفظ");
+  };
 
   return (
     <div className="flex h-[calc(100dvh-64px)]">
@@ -59,6 +77,10 @@ export function Studio() {
             </div>
             <div className="ms-auto flex gap-2">
               <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setDrawer(true)}><SlidersHorizontal className="h-4 w-4" /> تعديل</Button>
+              <Button variant="outline" size="sm" onClick={saveNow} disabled={saveState === "saving"} title={saveMsg || undefined}>
+                <Save className="h-4 w-4" />
+                <span className="hidden sm:inline">{saveState === "saving" ? "يحفظ…" : saveMsg ? "تعذر الحفظ" : saved && customer ? `محفوظ · ${daysLeft(saved.expiresAt) ?? "∞"} يوماً` : "احفظ المنيو"}</span>
+              </Button>
               <Button variant="ghost" size="sm" onClick={reset}><ArrowRight className="h-4 w-4" /> منيو جديد</Button>
             </div>
           </div>

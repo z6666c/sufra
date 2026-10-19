@@ -1,6 +1,6 @@
 // الحسابات والجلسات: حساب إدارة + حساب ديمو (بدون قاعدة بيانات)
 // - بيانات الدخول من متغيرات البيئة، والجلسة كعكة موقّعة HMAC-SHA256 (Web Crypto: تعمل في proxy والخادم)
-export type Role = "admin" | "demo";
+export type Role = "admin" | "demo" | "customer";
 export interface Session { u: string; r: Role; exp: number }
 
 export const SESSION_COOKIE = "sufra_session";
@@ -59,10 +59,11 @@ export async function verifyLogin(username: string, password: string): Promise<A
   return found;
 }
 
-export async function createToken(acc: { username: string; role: Role }): Promise<string> {
+export const CUSTOMER_MAX_AGE = 60 * 60 * 24 * 30;
+export async function createToken(acc: { username: string; role: Role }, maxAge = acc.role === "customer" ? CUSTOMER_MAX_AGE : MAX_AGE): Promise<string> {
   const secret = authSecret();
   if (!secret) throw new Error("AUTH_SECRET_MISSING");
-  const body = b64url(enc.encode(JSON.stringify({ u: acc.username, r: acc.role, exp: Math.floor(Date.now() / 1000) + MAX_AGE } satisfies Session)));
+  const body = b64url(enc.encode(JSON.stringify({ u: acc.username, r: acc.role, exp: Math.floor(Date.now() / 1000) + maxAge } satisfies Session)));
   return `${body}.${await hmac(secret, body)}`;
 }
 
@@ -73,9 +74,9 @@ export async function readToken(token?: string | null): Promise<Session | null> 
   if (!body || !sig || !(await safeEqual(sig, await hmac(secret, body)))) return null;
   try {
     const s = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Session;
-    if (s.exp < Date.now() / 1000 || (s.r !== "admin" && s.r !== "demo")) return null;
-    // الحساب قد يُعطَّل لاحقاً من البيئة
-    if (!accounts().some((a) => a.username === s.u && a.role === s.r)) return null;
+    if (s.exp < Date.now() / 1000 || (s.r !== "admin" && s.r !== "demo" && s.r !== "customer")) return null;
+    // حسابات الإدارة والديمو قد تُعطَّل لاحقاً من البيئة؛ العملاء محفوظون في قاعدة البيانات
+    if (s.r !== "customer" && !accounts().some((a) => a.username === s.u && a.role === s.r)) return null;
     return s;
   } catch {
     return null;

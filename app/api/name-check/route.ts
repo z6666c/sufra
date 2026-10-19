@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { stat } from "@/lib/customers";
 import { aiNameSearch, checkDotCom, officialLinks, type NameCheckResult } from "@/lib/name-check";
 
 export const runtime = "nodejs";
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     checkDotCom(input.nameEn),
     process.env.GEMINI_API_KEY ? aiNameSearch(input, AbortSignal.timeout(50_000)).catch((e) => { console.error("[name-check]", e instanceof Error ? e.message : e); return null; }) : Promise.resolve(null),
   ]);
+  if (ai) await stat("name_check");
   const result: NameCheckResult = {
     verdict: ai?.verdict ?? "unknown",
     summary: ai?.summary || (process.env.GEMINI_API_KEY ? "تعذر إكمال البحث الآلي الآن؛ استخدم الروابط أدناه للتحقق." : "البحث الآلي غير مفعّل (أضف GEMINI_API_KEY). استخدم الروابط أدناه للتحقق يدوياً."),

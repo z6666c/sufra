@@ -1,5 +1,6 @@
 // اقتراح أوصاف عربية وإنجليزية جذابة لأصناف المنيو عبر Gemini (اختياري)
 import { NextResponse } from "next/server";
+import { stat } from "@/lib/customers";
 import { sessionFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ const schema = {
 export async function POST(req: Request) {
   const session = await sessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "يلزم تسجيل الدخول" }, { status: 401 });
-  if (session.r === "demo") return NextResponse.json({ error: "اقتراحات الذكاء الاصطناعي غير متاحة في حساب الديمو" }, { status: 403 });
+  if (session.r === "demo") return NextResponse.json({ error: "سجّل مجاناً بالبريد أو الجوال لاستخدام اقتراحات الذكاء الاصطناعي" }, { status: 403 });
   const key = process.env.GEMINI_API_KEY;
   if (!key) return NextResponse.json({ error: "NO_KEY" }, { status: 501 });
   const { venueName, venueType, items } = (await req.json()) as {
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
   try {
+    await stat("menu_ai");
     return NextResponse.json(JSON.parse(text));
   } catch {
     return NextResponse.json({ error: "استجابة غير صالحة" }, { status: 502 });
