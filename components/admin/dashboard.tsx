@@ -21,8 +21,8 @@ type Overview = {
 };
 export type SettingRow = { label: string; value: string; ok?: boolean; hint?: string };
 
-const fmt = (n: number) => n.toLocaleString("ar-SA");
-const date = (t: number) => new Date(t).toLocaleDateString("ar-SA-u-ca-gregory", { day: "numeric", month: "short" });
+const fmt = (n: number) => n.toLocaleString("ar-SA-u-nu-latn");
+const date = (t: number) => new Date(t).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "short" });
 const left = (t: number | null) => (t ? Math.max(0, Math.ceil((t - Date.now()) / 86_400_000)) : null);
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -54,7 +54,7 @@ function DailyBars({ title, days, values, unit = "", span = "آخر 30 يوما�
       <figcaption className="mb-2 flex items-baseline justify-between gap-2">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-xs text-muted">
-          {hover !== null ? <>{new Date(days[h]).toLocaleDateString("ar-SA-u-ca-gregory", { day: "numeric", month: "long" })}: <b className="text-ink">{fmt(values[h])}{unit}</b></> : <>{span}: <b className="text-ink">{fmt(total)}{unit}</b></>}
+          {hover !== null ? <>{new Date(days[h]).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "long" })}: <b className="text-ink">{fmt(values[h])}{unit}</b></> : <>{span}: <b className="text-ink">{fmt(total)}{unit}</b></>}
         </span>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${title}: ${fmt(total)} خلال ${span}`} onMouseLeave={() => setHover(null)}>
@@ -288,7 +288,7 @@ function PaymentsTab() {
               <td className="p-3 font-medium">{d.title}{d.example && <span className="ms-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">مثال</span>}</td>
               <td className="p-3 text-xs" dir="ltr" style={{ textAlign: "right" }}>{d.owner}</td>
               <td className="p-3 text-xs">{kind === "pending" ? `${planLabel(d.requestedPlan)} · ${d.requestedPlan === "monthly" ? PLANS.monthly.price : PLANS.once.price} ر.س` : <PayStatus d={d} />}</td>
-              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
+              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
               <td className="p-3 text-left"><span className="inline-flex flex-wrap justify-end gap-1"><ActivateButtons d={d} onDone={load} /></span></td>
             </tr>
           ))}
@@ -566,7 +566,7 @@ const Loading = () => <div className="py-10 text-center text-sm text-muted">يح
 const Empty = ({ text }: { text: string }) => <div className="rounded-2xl border border-dashed border-line py-10 text-center text-sm text-muted">{text}</div>;
 const Problem = ({ text }: { text: string }) => <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{text}</div>;
 
-export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = { username: "", owner: true, level: "owner" } }: { brand: string; settings: SettingRow[]; extraTabs?: { id: string; label: string; node: React.ReactNode }[]; kvReady: boolean; me?: AdminMe }) {
+export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoStore = false, me = { username: "", owner: true, level: "owner" } }: { brand: string; settings: SettingRow[]; extraTabs?: { id: string; label: string; node: React.ReactNode }[]; kvReady: boolean; demoStore?: boolean; me?: AdminMe }) {
   const tabs = [
     { id: "overview", label: "نظرة عامة" }, { id: "payments", label: "الطلبات والمدفوعات" }, { id: "customers", label: "العملاء" }, { id: "designs", label: "التصاميم" },
     ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" },
@@ -605,6 +605,12 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = 
         </div>
       </div>
       {!kvReady && <div className="mb-4"><Problem text="قاعدة البيانات غير مربوطة: العملاء والتصاميم والإحصائيات لا تُحفظ بعد. اربط Upstash Redis من Vercel ← Storage ← Create Database، ثم أعد النشر." /></div>}
+      {demoStore && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+          <b>وضع العرض:</b> قاعدة البيانات غير مربوطة بعد، فاللوحة تعرض 100 عميل تجريبي محفوظين مؤقتاً في ذاكرة الخادم لتشوف كيف تعمل كل الأقسام. تقدر تجرّب التفعيل والتجديد والحذف، لكن التغييرات قد ترجع لوضعها الأول عند إعادة تشغيل الخادم.
+          تسجيل العملاء الحقيقيين متوقف حتى تربط Upstash Redis من Vercel ← Storage، وبعدها تُحذف هذه الأمثلة تلقائياً من العرض.
+        </div>
+      )}
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap px-3 py-2.5 text-sm ${tab === t.id ? "border-b-2 border-ember font-semibold text-ink" : "text-muted hover:text-ink"}`}>{t.label}</button>
@@ -617,7 +623,7 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = 
       {tab === "usage" && (kvReady ? <UsageTab key={ver} /> : <Empty text="يظهر الاستخدام بعد ربط قاعدة البيانات." />)}
       {tab === "settings" && me.owner && <SettingsTab rows={settings} />}
       {tab === "finance" && me.owner && (kvReady ? <FinanceTab key={ver} /> : <Empty text="تظهر المالية بعد ربط قاعدة البيانات." />)}
-      {tab === "team" && me.owner && (kvReady ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
+      {tab === "team" && me.owner && (kvReady && !demoStore ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
       {extraTabs.map((t) => tab === t.id && <div key={t.id}>{t.node}</div>)}
     </main>
     </MeCtx.Provider>

@@ -106,10 +106,10 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
                   <div className="truncate text-sm font-semibold">{d.title}</div>
                   <div className={`text-[11px] ${!designPaid(d) && left !== null && left <= 2 ? "text-red-600" : "text-muted"}`}>
                     {designPaid(d)
-                      ? <span className="font-semibold text-emerald-700">مدفوع{d.paid?.plan === "monthly" ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory")}` : ""}</span>
+                      ? <span className="font-semibold text-emerald-700">مدفوع{d.paid?.plan === "monthly" ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}` : ""}</span>
                       : d.paymentRequestedAt ? <span className="font-semibold text-amber-700">بانتظار تفعيل الدفع</span>
                       : <>معاينة — {left === null ? "" : `تُحذف المسودة بعد ${left} يوم`}</>}
-                    {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory")}
+                    {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}
                   </div>
                 </div>
                 <button disabled={!!busy} onClick={async () => { setBusy(d.id); await onOpen(d); setBusy(null); closeDesigns(); }} className="rounded-lg bg-ink px-3 py-1.5 text-xs text-paper disabled:opacity-50">{busy === d.id ? "…" : "فتح"}</button>

@@ -12,6 +12,9 @@ function redisConf() {
 /** هل التخزين الدائم متاح؟ (Redis، أو ملف محلي خارج الإنتاج) */
 export const kvAvailable = () => !!redisConf() || !isProd();
 export const kvKind = () => (redisConf() ? "redis" : isProd() ? "none" : "file");
+/** وضع العرض: في الإنتاج بدون Redis، لوحة الإدارة تعمل على ذاكرة مؤقتة ببيانات تجريبية فقط.
+ *  حسابات العملاء الحقيقية تبقى متوقفة (kvAvailable = false) حتى لا تضيع بيانات أحد. */
+export const kvMemory = () => !redisConf() && isProd();
 
 type Cmd = (string | number)[];
 
@@ -21,6 +24,7 @@ let local: Local | null = null;
 const FILE = () => path.join(process.env.KV_LOCAL_DIR || ".data", "kv.json");
 async function loadLocal(): Promise<Local> {
   if (local) return local;
+  if (kvMemory()) return (local = { v: {}, exp: {} });
   try { local = JSON.parse(await fs.readFile(FILE(), "utf8")); } catch { local = { v: {}, exp: {} }; }
   return local!;
 }
@@ -62,16 +66,13 @@ async function localCmd(c: Cmd): Promise<unknown> {
     case "MGET": r = [key, ...a].map((k) => (typeof db.v[k] === "string" ? db.v[k] : null)); break;
     default: throw new Error(`local kv: unsupported ${op2}`);
   }
-  if (!["GET", "SMEMBERS", "ZREVRANGE", "ZCARD", "KEYS", "MGET", "TTL"].includes(op2)) await saveLocal();
+  if (!kvMemory() && !["GET", "SMEMBERS", "ZREVRANGE", "ZCARD", "KEYS", "MGET", "TTL"].includes(op2)) await saveLocal();
   return r;
 }
 
 export async function kv<T = unknown>(...c: Cmd): Promise<T> {
   const conf = redisConf();
-  if (!conf) {
-    if (isProd()) throw new Error("NO_KV");
-    return (await localCmd(c)) as T;
-  }
+  if (!conf) return (await localCmd(c)) as T; // ملف محلي في التطوير، وذاكرة مؤقتة في وضع العرض
   const r = await fetch(conf.url, { method: "POST", headers: { Authorization: `Bearer ${conf.token}`, "Content-Type": "application/json" }, body: JSON.stringify(c.map(String)), cache: "no-store" });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(`KV ${r.status}: ${j.error ?? ""}`);
@@ -82,7 +83,6 @@ export async function kvPipeline(cmds: Cmd[]): Promise<unknown[]> {
   if (!cmds.length) return [];
   const conf = redisConf();
   if (!conf) {
-    if (isProd()) throw new Error("NO_KV");
     const out: unknown[] = [];
     for (const c of cmds) out.push(await localCmd(c));
     return out;

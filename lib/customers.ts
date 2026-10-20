@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import { kv, kvJson, kvPipeline } from "./kv";
 
+export const DESIGN_KIND = "menu";
 const APP = "sufra";
 /** مدة حفظ المسودة غير المدفوعة (لإكمال الشراء) — لا توجد فترة مجانية */
 export const DRAFT_DAYS = Number(process.env.DRAFT_DAYS || 7);
