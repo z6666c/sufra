@@ -43,7 +43,7 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
 }
 
 /** عمود يومي لسلسلة واحدة — تلميح عند المرور، وجدول بديل للقراءة */
-function DailyBars({ title, days, values, unit = "" }: { title: string; days: string[]; values: number[]; unit?: string }) {
+function DailyBars({ title, days, values, unit = "", span = "آخر 30 يوماً" }: { title: string; days: string[]; values: number[]; unit?: string; span?: string }) {
   const [hover, setHover] = React.useState<number | null>(null);
   const max = Math.max(1, ...values);
   const W = 600, H = 140, pad = 18, bw = (W - pad * 2) / values.length;
@@ -54,10 +54,10 @@ function DailyBars({ title, days, values, unit = "" }: { title: string; days: st
       <figcaption className="mb-2 flex items-baseline justify-between gap-2">
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-xs text-muted">
-          {hover !== null ? <>{new Date(days[h]).toLocaleDateString("ar-SA-u-ca-gregory", { day: "numeric", month: "long" })}: <b className="text-ink">{fmt(values[h])}{unit}</b></> : <>آخر 30 يوماً: <b className="text-ink">{fmt(total)}{unit}</b></>}
+          {hover !== null ? <>{new Date(days[h]).toLocaleDateString("ar-SA-u-ca-gregory", { day: "numeric", month: "long" })}: <b className="text-ink">{fmt(values[h])}{unit}</b></> : <>{span}: <b className="text-ink">{fmt(total)}{unit}</b></>}
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${title}: ${fmt(total)} خلال 30 يوماً`} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label={`${title}: ${fmt(total)} خلال ${span}`} onMouseLeave={() => setHover(null)}>
         <line x1={pad} x2={W - pad} y1={H} y2={H} stroke="var(--color-line)" strokeWidth="1" />
         {values.map((v, i) => {
           // الأيام من اليمين لليسار لتطابق اتجاه القراءة العربية
@@ -415,6 +415,93 @@ function TeamTab() {
   );
 }
 
+type Fin = {
+  days: number; revenue: number; revenueOnce: number; revenueMonthly: number; revenueOther: number; payments: number; paymentsOnce: number; paymentsMonthly: number;
+  variable: { metric: string; label: string; unit: number; qty: number; amount: number; source: string; estimate?: boolean }[];
+  gateway: { qty: number; amount: number; pct: number; fixed: number };
+  fixed: { label: string; monthly: number; amount: number; note: string; estimate?: boolean }[];
+  varTotal: number; fixedTotal: number; zakat: number; zakatRate: number; costs: number; net: number; margin: number;
+  series: { days: string[]; revenue: number[] };
+  snapshot: { paidCustomers: number; activeOnce: number; subscribers: number; mrr: number };
+  perCustomer: { revenue: number; cost: number };
+  plans: { once: number; monthly: number };
+};
+const sar = (n: number) => `${n.toLocaleString("ar-SA-u-nu-latn", { maximumFractionDigits: n < 100 ? 2 : 0 })} ر.س`;
+function FinanceTab() {
+  const [days, setDays] = React.useState(30);
+  const [d, setD] = React.useState<Fin | null>(null);
+  const [err, setErr] = React.useState("");
+  React.useEffect(() => { setD(null); api<Fin>(`/api/admin/finance?days=${days}`).then(setD).catch((e) => setErr(e.message)); }, [days]);
+  if (err) return <Problem text={err} />;
+  const period = days === 30 ? "آخر 30 يوماً" : days === 90 ? "آخر 90 يوماً" : "آخر سنة";
+  const Est = () => <span className="ms-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800">تقديري</span>;
+  const row = "border-b border-line last:border-0";
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        {[30, 90, 365].map((n) => (
+          <button key={n} onClick={() => setDays(n)} className={`rounded-full px-3 py-1.5 text-xs ${days === n ? "bg-ink text-paper" : "border border-line bg-white"}`}>{n === 30 ? "30 يوماً" : n === 90 ? "90 يوماً" : "سنة"}</button>
+        ))}
+        <span className="text-xs text-muted">مالية هذا التطبيق وحده · الإيراد من المدفوعات الفعلية، والتكاليف من عدد العمليات الفعلي × سعر الوحدة.</span>
+      </div>
+      {!d ? <Loading /> : (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Kpi label={`الإيراد · ${period}`} value={sar(d.revenue)} sub={`${fmt(d.payments)} عملية دفع`} />
+            <Kpi label={`التكاليف · ${period}`} value={sar(d.costs)} sub={`متغيرة ${sar(d.varTotal)} · ثابتة ${sar(d.fixedTotal)}`} />
+            <Kpi label="صافي الربح" value={sar(d.net)} sub={d.revenue ? `هامش ${Math.round(d.margin * 100)}%` : "لا إيراد بعد"} tone={d.net < 0 ? "warn" : undefined} />
+            <Kpi label="الدخل الشهري المتكرر الآن" value={sar(d.snapshot.mrr)} sub={`${fmt(d.snapshot.subscribers)} مشترك شهري · ${fmt(d.snapshot.paidCustomers)} عميل دافع`} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DailyBars title="الإيراد اليومي" span={period} days={d.series.days} values={d.series.revenue} unit=" ر.س" />
+            <div className="rounded-2xl border border-line bg-white p-5">
+              <h3 className="mb-3 text-sm font-semibold">الإيراد حسب الباقة</h3>
+              <table className="w-full text-sm"><tbody>
+                <tr className={row}><td className="py-2">مرة واحدة ({fmt(d.paymentsOnce)} × {d.plans.once} ر.س)</td><td className="py-2 text-left font-latin">{sar(d.revenueOnce)}</td></tr>
+                <tr className={row}><td className="py-2">اشتراك شهري ({fmt(d.paymentsMonthly)} دفعة × {d.plans.monthly} ر.س)</td><td className="py-2 text-left font-latin">{sar(d.revenueMonthly)}</td></tr>
+                {d.revenueOther > 0 && <tr className={row}><td className="py-2 text-muted">مدفوعات قبل تقسيم الباقات</td><td className="py-2 text-left font-latin">{sar(d.revenueOther)}</td></tr>}
+                <tr><td className="pt-3 font-semibold">الإجمالي</td><td className="pt-3 text-left font-latin font-semibold">{sar(d.revenue)}</td></tr>
+              </tbody></table>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl bg-paper p-3"><div className="text-muted">إيراد العميل الدافع</div><div className="mt-1 font-latin text-base">{sar(d.perCustomer.revenue)}</div></div>
+                <div className="rounded-xl bg-paper p-3"><div className="text-muted">تكلفة العميل الدافع</div><div className="mt-1 font-latin text-base">{sar(d.perCustomer.cost)}</div><div className="text-[10px] text-muted">تشمل تكلفة الزوار اللي ما دفعوا</div></div>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+            <table className="w-full text-sm">
+              <thead className="text-xs text-muted"><tr className="border-b border-line text-right">
+                <th className="p-3 font-medium">بند التكلفة · {period}</th><th className="p-3 font-medium">الكمية</th><th className="p-3 font-medium">سعر الوحدة</th><th className="p-3 font-medium">المبلغ</th><th className="p-3 font-medium">الأساس</th>
+              </tr></thead>
+              <tbody>
+                <tr className="bg-ink/[0.03]"><td colSpan={5} className="p-2 px-3 text-xs font-semibold">تكاليف متغيرة (حسب الاستخدام)</td></tr>
+                {d.variable.map((v) => (
+                  <tr key={v.metric} className={row}>
+                    <td className="p-3">{v.label}{v.estimate && <Est />}</td><td className="p-3 font-latin">{fmt(v.qty)}</td><td className="p-3 font-latin">{v.unit.toFixed(2)}</td><td className="p-3 font-latin">{sar(v.amount)}</td><td className="p-3 text-xs text-muted">{v.source}</td>
+                  </tr>
+                ))}
+                <tr className={row}><td className="p-3">رسوم بوابة الدفع<Est /></td><td className="p-3 font-latin">{fmt(d.gateway.qty)}</td><td className="p-3 font-latin text-xs">{(d.gateway.pct * 100).toFixed(2)}% + {d.gateway.fixed}</td><td className="p-3 font-latin">{sar(d.gateway.amount)}</td><td className="p-3 text-xs text-muted">مدى 70% بـ 1%، وبطاقات 30% بـ 2.5%، ورسم ثابت لكل عملية</td></tr>
+                <tr className="bg-ink/[0.03]"><td colSpan={5} className="p-2 px-3 text-xs font-semibold">مصاريف ثابتة (لهذا التطبيق، والمشترك بالنص)</td></tr>
+                {d.fixed.map((f) => (
+                  <tr key={f.label} className={row}>
+                    <td className="p-3">{f.label}{f.estimate && <Est />}</td><td className="p-3 font-latin">{(d.days / 30.44).toFixed(1)} شهر</td><td className="p-3 font-latin">{f.monthly.toFixed(2)} / شهر</td><td className="p-3 font-latin">{sar(f.amount)}</td><td className="p-3 text-xs text-muted">{f.note}</td>
+                  </tr>
+                ))}
+                <tr className={row}><td className="p-3">زكاة تقديرية<Est /></td><td className="p-3" /><td className="p-3 font-latin">{Math.round(d.zakatRate * 1000) / 10}%</td><td className="p-3 font-latin">{sar(d.zakat)}</td><td className="p-3 text-xs text-muted">من صافي الربح، والوعاء الفعلي يحدده المحاسب</td></tr>
+                <tr><td className="p-3 font-semibold">إجمالي التكاليف</td><td /><td /><td className="p-3 font-latin font-semibold">{sar(d.costs)}</td><td /></tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs leading-relaxed text-muted">
+            الأسعار من صفحات المزودين (أكتوبر 2026) والدولار بـ 3.75، وتقدر تعدّل أي سعر من متغيرات البيئة (مثل COST_AI_LOGO_SAR وCOST_SMS_SAR وGATEWAY_PCT وFIXED_VERCEL_SAR) بدون تعديل الكود.
+            غير محسوب: ضريبة القيمة المضافة (إلزامية فوق 375 ألف ر.س سنوياً)، وراتبك، والتسويق.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 const USAGE_LABEL: Record<string, string> = {
   ai_logos: "دفعات شعارات بالذكاء الاصطناعي", ai_logo_image: "شعارات Recraft (لكل شعار)", ai_identity: "صياغة هوية / شعارات Gemini",
   name_check: "فحص أسماء", menu_ai: "اقتراحات منيو", dish_photo: "صور أطباق", publish: "نشر منيو", payment_request: "طلبات تفعيل", payment: "عمليات دفع",
@@ -483,7 +570,7 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = 
   const tabs = [
     { id: "overview", label: "نظرة عامة" }, { id: "payments", label: "الطلبات والمدفوعات" }, { id: "customers", label: "العملاء" }, { id: "designs", label: "التصاميم" },
     ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" },
-    ...(me.owner ? [{ id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
+    ...(me.owner ? [{ id: "finance", label: "المالية" }, { id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
   ];
   const [tab, setTab] = React.useState("overview");
   const [ver, setVer] = React.useState(0);
@@ -529,6 +616,7 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, me = 
       {tab === "designs" && (kvReady ? <DesignsTab key={ver} /> : <Empty text="تظهر التصاميم بعد ربط قاعدة البيانات." />)}
       {tab === "usage" && (kvReady ? <UsageTab key={ver} /> : <Empty text="يظهر الاستخدام بعد ربط قاعدة البيانات." />)}
       {tab === "settings" && me.owner && <SettingsTab rows={settings} />}
+      {tab === "finance" && me.owner && (kvReady ? <FinanceTab key={ver} /> : <Empty text="تظهر المالية بعد ربط قاعدة البيانات." />)}
       {tab === "team" && me.owner && (kvReady ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
       {extraTabs.map((t) => tab === t.id && <div key={t.id}>{t.node}</div>)}
     </main>

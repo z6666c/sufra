@@ -220,7 +220,10 @@ export async function markDesignPaid(id: string, opts: { plan: PlanKind; amount:
   });
   if (!r) return null;
   // تفعيل تصميم تجريبي لا يُحسب في الإيراد الحقيقي (أرقام الأمثلة محسوبة مسبقاً وتُحذف معها)
-  if (opts && !(r as { example?: boolean }).example) { await stat("payment"); await stat("revenue", Math.round(opts.amount)); }
+  if (opts && !(r as { example?: boolean }).example) {
+    await stat("payment"); await stat("revenue", Math.round(opts.amount));
+    await stat(`payment_${opts.plan}`); await stat(`revenue_${opts.plan}`, Math.round(opts.amount));
+  }
   // حالة العميل: مدفوع إذا عنده تصميم مدفوع واحد على الأقل
   const c = await getCustomer(r.customerId);
   if (c) {
@@ -230,44 +233,86 @@ export async function markDesignPaid(id: string, opts: { plan: PlanKind; amount:
   return r;
 }
 
-// ── بيانات تجريبية للوحة التحكم ──
-const EX_NAMES = ["مقهى الواحة", "مطعم نخلة", "زهرة الياسمين", "صقر للشحن", "مخبز التاج", "مرسى البحر"];
+// ── بيانات تجريبية للوحة التحكم: 100 عميل دافع ──
+// 58 مرة واحدة + 2 طلب مرة واحدة، 34 شهري نشط + 4 ألغوا + 2 طلب شهري، وزيارات 900 زائر جربوا ولم يدفعوا.
+// تُكتب دفعة وحدة (pipeline) وتُسجل كل إحصائياتها لتُحذف بالضبط عند «حذف البيانات التجريبية».
+const EX_FIRST = ["مقهى", "مطعم", "مخبز", "محمصة", "مطبخ", "بيت", "متجر", "استوديو", "عيادة", "مؤسسة", "شركة", "صالون"];
+const EX_LAST = ["الواحة", "نخلة", "الياسمين", "التاج", "البحر", "الريف", "السدرة", "الديرة", "الأصيل", "النخبة", "القمة", "الندى", "الهيل", "الزعفران", "الفنار", "المرجان", "الجود", "السنا", "اللؤلؤ", "الرمال"];
+const EX_PEOPLE = ["أحمد", "سارة", "محمد", "نورة", "خالد", "ريم", "فهد", "لمى", "عبدالله", "هيا", "سلطان", "جود", "تركي", "منيرة", "ماجد", "دانة"];
+export const EXAMPLE_COUNT = 100;
+export const EXAMPLE_VISITORS = 900;
+
+/** استخدام الذكاء لكل نوع تطبيق: إنشاء العميل الدافع، والزائر غير الدافع، والمشترك شهرياً */
+const EX_USAGE: Record<string, { create: Record<string, number>; visitor: Record<string, number>; monthly: Record<string, number> }> = {
+  identity: {
+    create: { ai_identity: 5, ai_logos: 3, ai_logo_image: 12, name_check: 3 },
+    visitor: { ai_identity: 2, ai_logos: 1, ai_logo_image: 4, name_check: 1 },
+    monthly: { ai_logos: 1, ai_logo_image: 4, ai_identity: 2 },
+  },
+  menu: {
+    create: { menu_ai: 5, dish_photo: 15, ai_logos: 1, ai_logo_image: 4, name_check: 2, publish: 2 },
+    visitor: { menu_ai: 2, dish_photo: 3, ai_logos: 1, ai_logo_image: 4 },
+    monthly: { dish_photo: 3, menu_ai: 2, publish: 2 },
+  },
+};
+
 export async function seedExamples(kind: string, prices: { once: number; monthly: number }, onceMonths?: number) {
   const now = Date.now();
-  const made: string[] = [];
-  const idents: Ident[] = [
-    { type: "email", value: "ex.waha@example.com" }, { type: "phone", value: "+966500000101" }, { type: "email", value: "ex.yasmin@example.com" },
-    { type: "phone", value: "+966500000102" }, { type: "email", value: "ex.taj@example.com" }, { type: "email", value: "ex.marsa@example.com" },
-  ];
-  for (let i = 0; i < idents.length; i++) {
-    const { customer } = await upsertCustomer(idents[i]);
-    const created = now - (i * 2 + 1) * DAY;
-    await kvJson.set(k.cust(customer.id), { ...customer, example: true, note: "مثال", createdAt: created, lastLoginAt: now - i * 3600_000 });
-    await kv("ZADD", k.custs, created, customer.id);
-    const meta = await saveDesign({ ...customer, example: true }, { title: EX_NAMES[i], kind, data: { example: true } });
-    await patchDesign(meta.id, (x) => ({ ...x, example: true, createdAt: created, updatedAt: now - i * 1800_000 }));
-    // حالات مختلفة: طلبا تفعيل، مدفوع مرة وحدة، اشتراك شهري، مسودة تنتهي قريباً
-    if (i === 0) await requestPayment(meta.id, customer.id, "once");
-    if (i === 1) await requestPayment(meta.id, customer.id, "monthly");
-    if (i === 2) await markDesignPaid(meta.id, { plan: "once", amount: prices.once, months: onceMonths, by: "مثال" });
-    if (i === 3) await markDesignPaid(meta.id, { plan: "monthly", amount: prices.monthly, months: 1, by: "مثال" });
-    if (i === 5) await patchDesign(meta.id, (x) => ({ ...x, expiresAt: now + 2 * DAY }));
-    made.push(customer.id);
-  }
-  // إيراد الأمثلة المدفوعة (يُحذف مع البيانات التجريبية)
-  await stat("payment", 2); await stat("revenue", Math.round(prices.once) + Math.round(prices.monthly));
-  // إحصائيات يومية تقريبية لآخر أسبوعين لعرض الرسوم
+  const MONTH = 30.44 * DAY;
+  const rnd = (i: number, salt: number) => { const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453; return x - Math.floor(x); };
   const cmds: (string | number)[][] = [];
-  const statLog: [string, number][] = [];
-  for (let day = 1; day <= 14; day++) {
-    const dk = dayKey(now - day * DAY);
-    const add = (m: string, n: number) => { if (n > 0) { cmds.push(["INCRBY", k.stat(dk, m), n], ["EXPIRE", k.stat(dk, m), 400 * 86400]); statLog.push([k.stat(dk, m), n]); } };
-    add("signup", (day * 7) % 4); add("ai_logos", (day * 5) % 6); add("ai_logo_image", ((day * 5) % 6) * 4); add("ai_identity", (day * 3) % 5);
-    add("name_check", day % 3); add("otp_email", (day * 7) % 4 + 1);
+  const stats = new Map<string, number>();
+  const add = (t: number, m: string, n: number) => { if (n > 0) { const key = k.stat(dayKey(t), m); stats.set(key, (stats.get(key) ?? 0) + n); } };
+  const custIds: string[] = [], designIds: string[] = [], idents: string[] = [];
+  const usage = EX_USAGE[kind] ?? EX_USAGE.identity;
+  for (let i = 0; i < EXAMPLE_COUNT; i++) {
+    // الحالة حسب الترتيب
+    const st = i < 58 ? "once" : i < 60 ? "req_once" : i < 94 ? "monthly" : i < 98 ? "churned" : "req_monthly";
+    const ageDays = st === "churned" ? 35 + rnd(i, 1) * 20 : st === "monthly" ? rnd(i, 1) * 29 : st.startsWith("req") ? rnd(i, 1) * 2 : rnd(i, 1) * 44;
+    const created = Math.round(now - ageDays * DAY - rnd(i, 2) * 6 * 3600_000);
+    const id = newId(), did = newId();
+    const phone = i % 10 < 3;
+    const ident = phone ? `+9665${String(10000000 + i * 7919).slice(-8)}` : `ex${i + 1}@example.com`;
+    const name = EX_PEOPLE[i % EX_PEOPLE.length];
+    const title = `${EX_FIRST[(i * 7) % EX_FIRST.length]} ${EX_LAST[(i * 3 + Math.floor(i / 20)) % EX_LAST.length]}`;
+    const paidAt = created + Math.round((1 + rnd(i, 3) * 20) * 3600_000);
+    let paid: DesignPayment | null = null;
+    if (st === "once") paid = { at: paidAt, amount: prices.once, plan: "once", until: onceMonths ? paidAt + onceMonths * MONTH : null, by: "مثال" };
+    if (st === "monthly" || st === "churned") paid = { at: paidAt, amount: prices.monthly, plan: "monthly", until: paidAt + MONTH, by: "مثال" };
+    const pending = st.startsWith("req");
+    const c: Customer = { id, ...(phone ? { phone: ident } : { email: ident }), name, status: paid && isPaid({ paid }) ? "paid" : "trial", createdAt: created, lastLoginAt: Math.max(created, now - rnd(i, 4) * 10 * DAY), trialEndsAt: created, note: "مثال", example: true };
+    const d: Design = {
+      id: did, customerId: id, title, kind, createdAt: created, updatedAt: Math.max(created, now - rnd(i, 5) * 5 * DAY), expiresAt: pending ? now + DRAFT_DAYS * DAY : null,
+      data: { example: true }, size: 40_000 + Math.round(rnd(i, 6) * 400_000), paid,
+      paymentRequestedAt: pending ? now - rnd(i, 7) * 20 * 3600_000 : null, requestedPlan: pending ? (st === "req_once" ? "once" : "monthly") : null, example: true,
+    };
+    // لا نسجل المعرّف في فهرس الدخول حتى لا يتعارض مع رقم أو بريد عميل حقيقي
+    cmds.push(["SET", k.cust(id), JSON.stringify(c)], ["ZADD", k.custs, created, id]);
+    cmds.push(d.expiresAt ? ["SET", k.design(did), JSON.stringify(d), "EX", Math.ceil((d.expiresAt - now) / 1000)] : ["SET", k.design(did), JSON.stringify(d)]);
+    cmds.push(["SADD", k.custDesigns(id), did], ["ZADD", k.designs, d.updatedAt, did]);
+    custIds.push(id); designIds.push(did); idents.push(ident);
+    // إحصائيات العميل
+    add(created, "signup", 1); add(created, "design_new", 1); add(created, "design_save", 3);
+    add(created, phone ? "otp_sms" : "otp_email", 1);
+    for (const [m, n] of Object.entries(usage.create)) add(created, m, n);
+    if (pending) add(d.paymentRequestedAt!, "payment_request", 1);
+    if (paid) {
+      add(paid.at, "payment", 1); add(paid.at, "revenue", Math.round(paid.amount));
+      add(paid.at, `payment_${paid.plan}`, 1); add(paid.at, `revenue_${paid.plan}`, Math.round(paid.amount));
+      if (paid.plan === "monthly") for (const [m, n] of Object.entries(usage.monthly)) add(Math.min(paid.at + 10 * DAY, now), m, n);
+    }
   }
-  await kvPipeline(cmds);
-  await kv("SET", `${APP}:examples`, JSON.stringify({ ids: made, stats: statLog, at: now, revenue: Math.round(prices.once) + Math.round(prices.monthly) }));
-  return made.length;
+  // زوار جربوا المعاينة ولم يدفعوا (تكلفة ذكاء بدون إيراد) — موزعون على آخر 45 يوماً
+  for (let v = 0; v < EXAMPLE_VISITORS; v++) {
+    const t = now - rnd(v, 9) * 45 * DAY;
+    for (const [m, n] of Object.entries(usage.visitor)) add(t, m, n);
+    if (v % 2 === 0) add(t, v % 6 === 0 ? "otp_sms" : "otp_email", 1);
+  }
+  const statLog: [string, number][] = [...stats.entries()];
+  for (const [key, n] of statLog) cmds.push(["INCRBY", key, n], ["EXPIRE", key, 400 * 86400]);
+  for (let j = 0; j < cmds.length; j += 400) await kvPipeline(cmds.slice(j, j + 400));
+  await kv("SET", `${APP}:examples`, JSON.stringify({ v: 2, ids: custIds, designs: designIds, idents, stats: statLog, at: now }));
+  return custIds.length;
 }
 
 export const examplesExist = async () => !!(await kv<string | null>("GET", `${APP}:examples`));
@@ -275,15 +320,27 @@ export async function clearExamples() {
   const raw = await kv<string | null>("GET", `${APP}:examples`);
   const rec = raw ? JSON.parse(raw) : { ids: [], stats: [] };
   const ids: string[] = Array.isArray(rec) ? rec : rec.ids;
-  for (const id of ids) await deleteCustomer(id);
-  // إزالة الإحصائيات التجريبية وما سجلته عمليات الأمثلة (تسجيل، دفع، طلبات)
-  const extra: [string, number][] = [];
-  if (rec.at) {
-    const dk = dayKey(rec.at);
-    for (const [m, n] of [["signup", ids.length], ["login", 0], ["design_new", ids.length], ["design_save", ids.length * 2], ["payment_request", 2], ["payment", 2], ["revenue", rec.revenue ?? 0]] as [string, number][]) if (n) extra.push([k.stat(dk, m), n]);
+  if (rec.v === 2) {
+    // كل تصاميم العملاء التجريبيين (بما فيها أي تصميم أُضيف لاحقاً)
+    const sets = ids.length ? await kvPipeline(ids.map((id) => ["SMEMBERS", k.custDesigns(id)])) : [];
+    const dids = [...new Set([...(rec.designs as string[]), ...sets.flatMap((x) => (x as string[]) ?? [])])];
+    const cmds: (string | number)[][] = [
+      ...dids.flatMap((d) => [["DEL", k.design(d)], ["ZREM", k.designs, d]]),
+      ...ids.flatMap((id) => [["DEL", k.cust(id)], ["DEL", k.custDesigns(id)], ["ZREM", k.custs, id]]),
+      ...(rec.stats as [string, number][]).map(([key, n]) => ["DECRBY", key, n]),
+    ];
+    for (let j = 0; j < cmds.length; j += 400) await kvPipeline(cmds.slice(j, j + 400));
+  } else {
+    // صيغة الأمثلة القديمة (6 عملاء)
+    for (const id of ids) await deleteCustomer(id);
+    const extra: [string, number][] = [];
+    if (rec.at) {
+      const dk = dayKey(rec.at);
+      for (const [m, n] of [["signup", ids.length], ["design_new", ids.length], ["design_save", ids.length * 2], ["payment_request", 2], ["payment", 2], ["revenue", rec.revenue ?? 0]] as [string, number][]) if (n) extra.push([k.stat(dk, m), n]);
+    }
+    const all = [...(rec.stats ?? []), ...extra];
+    if (all.length) await kvPipeline(all.map(([key, n]) => ["DECRBY", key, n]));
   }
-  const all = [...(rec.stats ?? []), ...extra];
-  if (all.length) await kvPipeline(all.map(([key, n]) => ["DECRBY", key, n]));
   await kv("DEL", `${APP}:examples`);
   return ids.length;
 }
