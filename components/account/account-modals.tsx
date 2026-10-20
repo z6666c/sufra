@@ -30,6 +30,7 @@ function SignupModal({ reason }: { reason?: string }) {
   const [code, setCode] = React.useState("");
   const [to, setTo] = React.useState("");
   const [devCode, setDevCode] = React.useState<string | undefined>(undefined);
+  const [via, setVia] = React.useState<string | undefined>(undefined);
   const [err, setErr] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [wait, setWait] = React.useState(0);
@@ -42,7 +43,7 @@ function SignupModal({ reason }: { reason?: string }) {
       const r = await fetch("/api/account/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: ident }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error ?? "تعذر الإرسال");
-      setTo(d.to); setDevCode(d.devCode); setStep("code"); setWait(60); setCode("");
+      setTo(d.to); setDevCode(d.devCode); setVia(d.via); setStep("code"); setWait(60); setCode("");
     } catch (e) { setErr(e instanceof Error ? e.message : "تعذر الإرسال"); } finally { setBusy(false); }
   };
   const verify = async () => {
@@ -63,13 +64,14 @@ function SignupModal({ reason }: { reason?: string }) {
       </p>
       {step === "id" ? (
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="space-y-3">
-          <input autoFocus dir="ltr" value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="name@email.com  أو  05xxxxxxxx" className="h-11 w-full rounded-xl border border-line px-3.5 text-center outline-none focus:border-ink/40" />
-          {s && !s.phone && <p className="text-[11px] text-muted">التسجيل بالجوال غير مفعّل حالياً — استخدم البريد الإلكتروني.</p>}
+          <input autoFocus dir="ltr" value={ident} onChange={(e) => setIdent(e.target.value)} placeholder="name@email.com  أو  رقم واتساب 05xxxxxxxx" className="h-11 w-full rounded-xl border border-line px-3.5 text-center outline-none focus:border-ink/40" />
+          {s && !s.phone ? <p className="text-[11px] text-muted">التسجيل بالجوال غير مفعّل حالياً — استخدم البريد الإلكتروني.</p>
+            : <p className="text-[11px] text-muted">يوصلك الرمز على بريدك، أو على واتساب إذا كتبت رقم جوالك.</p>}
           <button disabled={busy || ident.trim().length < 5} className="h-11 w-full rounded-xl bg-ink font-medium text-paper disabled:opacity-50">{busy ? "…" : "أرسل رمز التحقق"}</button>
         </form>
       ) : (
         <form onSubmit={(e) => { e.preventDefault(); verify(); }} className="space-y-3">
-          <p className="text-sm">أرسلنا رمزاً من 6 أرقام إلى <b dir="ltr">{to}</b></p>
+          <p className="text-sm">أرسلنا رمزاً من 6 أرقام {via === "whatsapp" ? "على واتساب إلى" : via === "sms" ? "برسالة نصية إلى" : "إلى بريدك"} <b dir="ltr">{to}</b></p>
           {devCode && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">وضع التجربة: الرمز <b dir="ltr">{devCode}</b> (لا يظهر بعد تفعيل الإرسال)</p>}
           <input autoFocus inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d٠-٩]/g, ""))} placeholder="••••••" className="h-12 w-full rounded-xl border border-line px-3.5 text-center font-latin text-xl tracking-[0.5em] outline-none focus:border-ink/40" />
           <button disabled={busy || code.length !== 6} className="h-11 w-full rounded-xl bg-ink font-medium text-paper disabled:opacity-50">{busy ? "…" : "تأكيد والدخول"}</button>

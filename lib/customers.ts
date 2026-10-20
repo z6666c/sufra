@@ -247,12 +247,14 @@ export const EXAMPLE_VISITORS = 900;
 const EX_USAGE: Record<string, { create: Record<string, number>; visitor: Record<string, number>; monthly: Record<string, number> }> = {
   identity: {
     create: { ai_identity: 5, ai_logos: 3, ai_logo_image: 12, name_check: 3 },
-    visitor: { ai_identity: 2, ai_logos: 1, ai_logo_image: 4, name_check: 1 },
+    // الزائر: شعاران بـ Gemini (تُحسب كعملية Gemini) بدل 4 شعارات Recraft
+    visitor: { ai_identity: 3, ai_logos: 1, name_check: 1 },
     monthly: { ai_logos: 1, ai_logo_image: 4, ai_identity: 2 },
   },
   menu: {
     create: { menu_ai: 5, dish_photo: 15, ai_logos: 1, ai_logo_image: 4, name_check: 2, publish: 2 },
-    visitor: { menu_ai: 2, dish_photo: 3, ai_logos: 1, ai_logo_image: 4 },
+    // الزائر: شعاران بـ Gemini، وصور الأطباق واقتراحات المنيو بعد التسجيل فقط
+    visitor: { menu_ai: 1, dish_photo: 1, ai_logos: 1, ai_identity: 1 },
     monthly: { dish_photo: 3, menu_ai: 2, publish: 2 },
   },
 };
@@ -294,7 +296,7 @@ export async function seedExamples(kind: string, prices: { once: number; monthly
     custIds.push(id); designIds.push(did); idents.push(ident);
     // إحصائيات العميل
     add(created, "signup", 1); add(created, "design_new", 1); add(created, "design_save", 3);
-    add(created, phone ? "otp_sms" : "otp_email", 1);
+    add(created, phone ? "otp_whatsapp" : "otp_email", 1);
     for (const [m, n] of Object.entries(usage.create)) add(created, m, n);
     if (pending) add(d.paymentRequestedAt!, "payment_request", 1);
     if (paid) {
@@ -307,7 +309,7 @@ export async function seedExamples(kind: string, prices: { once: number; monthly
   for (let v = 0; v < EXAMPLE_VISITORS; v++) {
     const t = now - rnd(v, 9) * 45 * DAY;
     for (const [m, n] of Object.entries(usage.visitor)) add(t, m, n);
-    if (v % 2 === 0) add(t, v % 6 === 0 ? "otp_sms" : "otp_email", 1);
+    if (v % 2 === 0) add(t, v % 6 === 0 ? "otp_whatsapp" : "otp_email", 1);
   }
   const statLog: [string, number][] = [...stats.entries()];
   for (const [key, n] of statLog) cmds.push(["INCRBY", key, n], ["EXPIRE", key, 400 * 86400]);

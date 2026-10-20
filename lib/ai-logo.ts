@@ -205,8 +205,9 @@ async function geminiLogos(req: AiLogoRequest, signal?: AbortSignal): Promise<Lo
 export const aiLogoProvider = (): "recraft" | "gemini" | null =>
   process.env.RECRAFT_API_KEY ? "recraft" : process.env.GEMINI_API_KEY ? "gemini" : null;
 
-export async function generateAiLogos(req: AiLogoRequest, signal?: AbortSignal): Promise<{ provider: "recraft" | "gemini"; concepts: LogoConcept[] }> {
-  const provider = aiLogoProvider();
+export async function generateAiLogos(req: AiLogoRequest, signal?: AbortSignal, opts: { cheap?: boolean } = {}): Promise<{ provider: "recraft" | "gemini"; concepts: LogoConcept[] }> {
+  // الزوار: Gemini فقط إن وُجد مفتاحه (تكلفة الدفعة قروش بدل 0.30 ر.س للشعار في Recraft)
+  const provider = opts.cheap && process.env.GEMINI_API_KEY ? "gemini" : aiLogoProvider();
   if (!provider) throw new Error("NO_KEY");
   if (provider === "recraft") {
     try {

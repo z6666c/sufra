@@ -22,7 +22,7 @@ export function AiLogoButton() {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(r.status === 501 ? "يحتاج الخادم RECRAFT_API_KEY أو GEMINI_API_KEY" : d.error ?? "تعذر الرسم");
       add(d.concepts);
-      setMsg(`رسم الذكاء الاصطناعي ${d.concepts.length} شعارات واخترنا الأول.`);
+      setMsg(d.note ?? `رسم الذكاء الاصطناعي ${d.concepts.length} شعارات واخترنا الأول.`);
     } catch (e) {
       setMsg(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "الرسم بالذكاء الاصطناعي يعمل في الموقع المنشور فقط");
     } finally { setBusy(false); }

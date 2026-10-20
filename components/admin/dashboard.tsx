@@ -505,7 +505,7 @@ function FinanceTab() {
 const USAGE_LABEL: Record<string, string> = {
   ai_logos: "دفعات شعارات بالذكاء الاصطناعي", ai_logo_image: "شعارات Recraft (لكل شعار)", ai_identity: "صياغة هوية / شعارات Gemini",
   name_check: "فحص أسماء", menu_ai: "اقتراحات منيو", dish_photo: "صور أطباق", publish: "نشر منيو", payment_request: "طلبات تفعيل", payment: "عمليات دفع",
-  otp_email: "رموز تحقق بالبريد", otp_sms: "رموز تحقق بالجوال", design_save: "حفظ تصاميم", login: "دخول عملاء", signup: "تسجيلات جديدة",
+  otp_email: "رموز تحقق بالبريد", otp_whatsapp: "رموز تحقق بواتساب", otp_sms: "رموز تحقق SMS", design_save: "حفظ تصاميم", login: "دخول عملاء", signup: "تسجيلات جديدة",
 };
 
 function UsageTab() {

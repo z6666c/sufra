@@ -13,11 +13,11 @@ export async function POST(req: Request) {
   const ident = parseIdentifier(String(body.identifier ?? ""));
   if (!ident) return json({ error: "اكتب بريداً صحيحاً أو رقم جوال مثل 05xxxxxxxx" }, 400);
   if (!canSend(ident.type)) {
-    return json({ error: ident.type === "email" ? "التسجيل بالبريد غير مفعّل بعد على الخادم" : "التسجيل بالجوال غير مفعّل بعد، استخدم البريد الإلكتروني" }, 503);
+    return json({ error: ident.type === "email" ? "التسجيل بالبريد غير مفعّل بعد على الخادم" : "التسجيل بالجوال (واتساب) غير مفعّل بعد، استخدم البريد الإلكتروني" }, 503);
   }
   try {
     const r = await startOtp(ident);
-    return json({ ok: true, to: maskIdent(ident), type: ident.type, ...(r.devCode ? { devCode: r.devCode } : {}) });
+    return json({ ok: true, to: maskIdent(ident), type: ident.type, via: r.via, ...(r.devCode ? { devCode: r.devCode } : {}) });
   } catch (e) {
     const m = e instanceof Error ? e.message : "";
     if (m === "COOLDOWN") return json({ error: "انتظر دقيقة قبل طلب رمز جديد" }, 429);

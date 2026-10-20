@@ -16,7 +16,7 @@ const COST = {
 export async function GET(req: Request) {
   const g = await requireAdmin(req);
   if (g instanceof Response) return g;
-  const metrics = ["signup", "login", "design_new", "design_save", "ai_logos", "ai_logo_image", "ai_identity", "name_check", "menu_ai", "dish_photo", "publish", "otp_email", "otp_sms", "payment", "revenue", "payment_request"];
+  const metrics = ["signup", "login", "design_new", "design_save", "ai_logos", "ai_logo_image", "ai_identity", "name_check", "menu_ai", "dish_photo", "publish", "otp_email", "otp_whatsapp", "otp_sms", "payment", "revenue", "payment_request"];
   const [customers, designs, series] = await Promise.all([listCustomers(1000), listAllDesigns(1000), statsSeries(metrics, 30)]);
   const now = Date.now(), week = 7 * 86_400_000;
   const sum = (m: string) => (series.series[m] ?? []).reduce((a, b) => a + b, 0);

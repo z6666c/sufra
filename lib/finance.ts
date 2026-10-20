@@ -10,7 +10,8 @@ export const UNIT_COSTS: UnitCost[] = ([
   { metric: "ai_identity", label: "توليد هوية (Gemini Flash)", unit: env("COST_AI_IDENTITY_SAR", 0.05), source: "≈ 4 آلاف رمز للعملية", estimate: true, only: "identity" },
   { metric: "menu_ai", label: "اقتراحات وترجمة المنيو (Gemini Flash)", unit: env("COST_MENU_AI_SAR", 0.05), source: "≈ 4 آلاف رمز للعملية", estimate: true, only: "menu" },
   { metric: "name_check", label: "فحص الاسم (Gemini Flash)", unit: env("COST_NAME_CHECK_SAR", 0.02), source: "≈ 1.5 ألف رمز للعملية", estimate: true },
-  { metric: "otp_sms", label: "رمز دخول برسالة جوال", unit: env("COST_SMS_SAR", 0.73), source: "Twilio للسعودية 0.1949$" },
+  { metric: "otp_whatsapp", label: "رمز دخول على واتساب", unit: env("COST_WHATSAPP_SAR", 0.04), source: "Meta للسعودية 0.0107$ (مصادقة)" },
+  { metric: "otp_sms", label: "رمز دخول برسالة SMS (احتياطي)", unit: env("COST_SMS_SAR", 0.73), source: "Twilio للسعودية 0.1949$" },
   { metric: "otp_email", label: "رمز دخول بالبريد", unit: env("COST_EMAIL_SAR", 0), source: "ضمن اشتراك Resend الثابت" },
 ] as UnitCost[]).filter((u) => !u.only || u.only === APP_KIND);
 
