@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
 const NM = "/opt/npm-tools/node_modules";
 
 const res = await build({
-  entryPoints: [path.join(root, "demo/main.tsx")],
+  entryPoints: [path.join(root, process.env.DEMO_ENTRY || "demo/main.tsx")],
   bundle: true, format: "iife", minify: true, write: false, target: "es2020", jsx: "automatic",
   nodePaths: [NM],
   alias: {

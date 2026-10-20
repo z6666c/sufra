@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { stat } from "@/lib/customers";
 import { sessionFromRequest } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,6 +26,9 @@ export async function POST(req: Request) {
   const session = await sessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "يلزم تسجيل الدخول" }, { status: 401 });
   if (session.r === "demo") return NextResponse.json({ error: "سجّل مجاناً بالبريد أو الجوال لاستخدام اقتراحات الذكاء الاصطناعي" }, { status: 403 });
+  // حد يومي لكل عميل يحمي رصيد الذكاء (الإدارة مستثناة) — قابل للتعديل من البيئة
+  if (session.r === "customer" && !rateLimit(`menu-ai:${session.u}`, Number(process.env.AI_MENU_PER_DAY || 15), 24 * 3600_000))
+    return NextResponse.json({ error: "وصلت الحد اليومي لاقتراحات الذكاء، جرّب بكرة" }, { status: 429 });
   const key = process.env.GEMINI_API_KEY;
   if (!key) return NextResponse.json({ error: "NO_KEY" }, { status: 501 });
   const { venueName, venueType, items } = (await req.json()) as {

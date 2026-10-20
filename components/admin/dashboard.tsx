@@ -543,8 +543,40 @@ function UsageTab() {
   );
 }
 
+function AiCheck() {
+  const [d, setD] = React.useState<{ checks: { name: string; ok: boolean; detail: string; balance?: string }[] } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const run = async () => { setBusy(true); setErr(""); try { setD(await api("/api/admin/ai-check")); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  return (
+    <div className="mb-4 rounded-2xl border border-line bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">أدوات الذكاء للتوليد</h3>
+          <p className="mt-1 text-xs text-muted">Gemini للهوية والمنيو وفحص الاسم، وRecraft للشعارات المتجهية وصور الأطباق. الفحص ما يستهلك من رصيدك.</p>
+        </div>
+        <button onClick={run} disabled={busy} className="rounded-xl bg-ink px-4 py-2 text-sm text-paper">{busy ? "يفحص…" : "اختبار أدوات الذكاء"}</button>
+      </div>
+      {err && <div className="mt-3"><Problem text={err} /></div>}
+      {d && (
+        <div className="mt-4 space-y-2">
+          {d.checks.map((c) => (
+            <div key={c.name} className={`rounded-xl px-3 py-2 text-sm ${c.ok ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>
+              <b className="font-latin">{c.name}</b> · {c.ok ? "✓ " : "⚠ "}{c.detail}
+              {c.balance && <div className="mt-0.5 text-xs">الرصيد: {c.balance}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsTab({ rows }: { rows: SettingRow[] }) {
   return (
+    <>
+    <AiCheck />
+    
     <div className="rounded-2xl border border-line bg-white p-2">
       {rows.map((r) => (
         <div key={r.label} className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-3 text-sm last:border-0">
@@ -559,6 +591,7 @@ function SettingsTab({ rows }: { rows: SettingRow[] }) {
         </div>
       ))}
     </div>
+    </>
   );
 }
 

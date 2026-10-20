@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { stat } from "@/lib/customers";
 import { sessionFromRequest } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,9 @@ export async function POST(req: Request) {
   const session = await sessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "يلزم تسجيل الدخول" }, { status: 401 });
   if (session.r === "demo") return NextResponse.json({ error: "سجّل مجاناً بالبريد أو الجوال لتوليد صور الأطباق" }, { status: 403 });
+  // حد يومي لكل عميل يحمي رصيد الذكاء (الإدارة مستثناة) — قابل للتعديل من البيئة
+  if (session.r === "customer" && !rateLimit(`dish:${session.u}`, Number(process.env.AI_DISH_PER_DAY || 20), 24 * 3600_000))
+    return NextResponse.json({ error: "وصلت الحد اليومي لصور الأطباق، جرّب بكرة" }, { status: 429 });
   const key = process.env.RECRAFT_API_KEY;
   if (!key) return NextResponse.json({ error: "NO_KEY" }, { status: 501 });
   const { name, nameEn, desc, venueType } = (await req.json()) as { name: string; nameEn?: string; desc?: string; venueType?: string };
