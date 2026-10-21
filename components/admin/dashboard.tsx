@@ -570,6 +570,49 @@ function FinanceTab() {
 type CouponRow = { code: string; type: "percent" | "fixed"; value: number; plans: PlanKind[]; maxUses: number | null; uses: number; expiresAt: number | null; active: boolean; note?: string; createdAt: number };
 const randomCode = () => "SAVE" + Array.from(crypto.getRandomValues(new Uint8Array(3)), (x) => "ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x % 31]).join("");
 type PayM = { bank?: { enabled: boolean; bankName: string; holder: string; iban: string }; stcpay?: { enabled: boolean; number: string }; link?: { enabled: boolean; url: string; label: string }; whatsapp?: string; note?: string; at?: number; by?: string };
+type GW = { id: string; name: string; configured: boolean; mode: "test" | "live" | null; methods: string };
+function GatewaysSection() {
+  const [d, setD] = React.useState<{ gateways: GW[]; active: string | null; setting: string | null } | null>(null);
+  const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { api<NonNullable<typeof d>>("/api/admin/gateways").then(setD).catch((e) => setMsg({ ok: false, text: e.message })); }, []);
+  const choose = async (active: string) => {
+    setBusy(true); setMsg(null);
+    try { setD(await api("/api/admin/gateways", { method: "PUT", body: JSON.stringify({ active }) })); setMsg({ ok: true, text: active === "off" ? "أوقفت الدفع الإلكتروني. العملاء يشوفون طرق التحويل فقط." : "تم. العملاء يدفعون الحين من هذي البوابة، والتفعيل تلقائي." }); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+  };
+  if (!d) return msg ? <Problem text={msg.text} /> : null;
+  const envName: Record<string, string> = { moyasar: "MOYASAR_SECRET_KEY", tap: "TAP_SECRET_KEY" };
+  return (
+    <section className="rounded-2xl border border-line bg-white p-5">
+      <h3 className="text-sm font-semibold">الدفع الإلكتروني (تفعيل تلقائي)</h3>
+      <p className="mt-1 text-xs text-muted">العميل يضغط «ادفع الآن» ويدفع بمدى أو آبل باي أو البطاقة أو STC Pay، وأول ما ينجح الدفع يتفعّل طلبه تلقائياً ويوصلك المبلغ في حساب البوابة. اختر البوابة اللي فتحت فيها حساب تاجر.</p>
+      {msg && <div className={`mt-3 rounded-xl px-4 py-2.5 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>{msg.text}</div>}
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {d.gateways.map((g) => {
+          const on = d.active === g.id;
+          return (
+            <div key={g.id} className={`rounded-xl border p-4 ${on ? "border-emerald-400 bg-emerald-50/60" : "border-line"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold">{g.name}</div>
+                {on ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">المفعّلة</span>
+                  : g.configured ? <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[11px]">جاهزة</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">ما انضاف المفتاح</span>}
+              </div>
+              <div className="mt-1 text-xs text-muted">{g.methods}</div>
+              <div className="mt-2 text-xs">{g.configured ? (g.mode === "live" ? <span className="font-semibold text-emerald-700">مفتاح حقيقي — يستقبل فلوس فعلية</span> : <span className="font-semibold text-amber-700">مفتاح تجريبي — للتجربة بدون فلوس</span>)
+                : <>أضف <code dir="ltr" className="rounded bg-ink/5 px-1 font-latin">{envName[g.id]}</code> في إعدادات المشروع على فيرسل، ثم أعد النشر.</>}</div>
+              {g.configured && !on && <button disabled={busy} onClick={() => choose(g.id)} className="mt-3 h-9 rounded-xl bg-ink px-4 text-sm text-paper">تفعيل {g.name}</button>}
+            </div>
+          );
+        })}
+      </div>
+      {d.active && <button disabled={busy} onClick={() => choose("off")} className="mt-3 text-xs text-muted underline">إيقاف الدفع الإلكتروني مؤقتاً</button>}
+      {!d.active && d.setting === "off" && d.gateways.some((g) => g.configured) && <p className="mt-3 text-xs text-amber-700">الدفع الإلكتروني موقوف. اختر بوابة لتفعيله.</p>}
+      <p className="mt-3 text-[11px] leading-relaxed text-muted">رابط الإشعار اللي تطلبه البوابة يُرسل تلقائياً مع كل عملية: <code dir="ltr" className="font-latin">/api/pay/webhook/…</code>. وطرق التحويل اليدوي تحت تبقى خيار إضافي للعميل.</p>
+    </section>
+  );
+}
+
 function PayMethodsSection() {
   const [f, setF] = React.useState<Required<Pick<PayM, "bank" | "stcpay" | "link">> & { whatsapp: string; note: string }>({
     bank: { enabled: false, bankName: "", holder: "", iban: "" }, stcpay: { enabled: false, number: "" }, link: { enabled: false, url: "", label: "ادفع بمدى أو Apple Pay" }, whatsapp: "", note: "",
@@ -674,6 +717,8 @@ function PricingTab({ onSaved }: { onSaved: (p: { once: number; monthly: number 
           <button disabled={busy === "prices" || !pr.override} onClick={() => savePrices(true)} className="h-10 rounded-xl border border-line px-4 text-sm disabled:opacity-40">رجوع للافتراضي</button>
         </div>
       </section>
+
+      <GatewaysSection />
 
       <PayMethodsSection />
 

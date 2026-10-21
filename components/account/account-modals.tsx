@@ -1,7 +1,7 @@
 "use client";
 // نافذة التسجيل بالبريد أو الجوال (رمز تحقق) + نافذة «تصاميمي»
 import * as React from "react";
-import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, quoteCoupon, usePlans, useAccount, type DesignMeta } from "./account-client";
+import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, quoteCoupon, usePlans, startPayment, openPaywall, useAccount, type DesignMeta } from "./account-client";
 import { PREVIEW_NOTE, type PlanKind } from "@/lib/plans";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -114,6 +114,7 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
                     {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}
                   </div>
                 </div>
+                {me?.gateway && d.paid?.plan === "monthly" && <button disabled={!!busy} onClick={() => { closeDesigns(); openPaywall(d.id, "جدّد اشتراكك الشهري."); }} className="rounded-lg border border-line px-2.5 py-1.5 text-xs">تجديد</button>}
                 <button disabled={!!busy} onClick={async () => { setBusy(d.id); await onOpen(d); setBusy(null); closeDesigns(); }} className="rounded-lg bg-ink px-3 py-1.5 text-xs text-paper disabled:opacity-50">{busy === d.id ? "…" : "فتح"}</button>
                 <button disabled={!!busy} onClick={() => deleteDesignRemote(d.id)} className="rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">حذف</button>
               </li>
@@ -150,9 +151,14 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
     setCodeMsg(Object.keys(next).length ? `تم تطبيق الكود: ${Object.values(next)[0]!.label}` : (first?.reason as Error)?.message ?? "كود الخصم غير صحيح");
     setChecking(false);
   };
+  const gw = me?.gateway;
   const pick = async (plan: PlanKind) => {
     setBusy(plan); setErr("");
     try { await requestActivation(designId, plan, deal[plan]?.code); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  };
+  const payNow = async (plan: PlanKind) => {
+    setBusy(plan); setErr("");
+    try { await startPayment(designId, plan, deal[plan]?.code); } catch (e) { setErr((e as Error).message); setBusy(null); }
   };
   if (designPaid(d)) return <Shell title="تم التفعيل" onClose={closePaywall}><p className="text-sm">التصميم مدفوع — أعد المحاولة للتحميل.</p></Shell>;
   return (
@@ -170,13 +176,26 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
               </div>
               {deal[k] && <div className="-mt-1 mb-2 text-[11px] font-semibold text-emerald-700">{deal[k]!.label}{k === "monthly" ? " على أول شهر" : ""}</div>}
               <ul className="mb-3 flex-1 space-y-1 text-[11.5px] leading-relaxed text-muted">{p.includes.map((x) => <li key={x}>✓ {x}</li>)}</ul>
-              <button disabled={!!busy} onClick={() => pick(k)} className={`h-9 rounded-lg text-sm font-medium ${chosen ? "bg-ember text-white" : "bg-ink text-paper"} disabled:opacity-50`}>
-                {busy === k ? "…" : chosen ? "تم إرسال الطلب ✓" : "اختر هذه الباقة"}
-              </button>
+              {gw ? (
+                <>
+                  <button disabled={!!busy} onClick={() => payNow(k)} className="h-10 rounded-lg bg-ink text-sm font-semibold text-paper disabled:opacity-50">{busy === k ? "يفتح صفحة الدفع…" : `ادفع الآن ${deal[k] ? deal[k]!.price : p.price} ر.س`}</button>
+                  <button disabled={!!busy} onClick={() => pick(k)} className={`mt-1.5 h-8 rounded-lg text-xs ${chosen ? "bg-ember/10 font-semibold text-ember" : "text-muted hover:bg-ink/5"}`}>{chosen ? "طلبت التحويل اليدوي ✓" : "أو ادفع بالتحويل"}</button>
+                </>
+              ) : (
+                <button disabled={!!busy} onClick={() => pick(k)} className={`h-9 rounded-lg text-sm font-medium ${chosen ? "bg-ember text-white" : "bg-ink text-paper"} disabled:opacity-50`}>
+                  {busy === k ? "…" : chosen ? "تم إرسال الطلب ✓" : "اختر هذه الباقة"}
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+      {gw && (
+        <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+          🔒 دفع آمن عبر {gw.name}: {gw.methods}. يُفتح {d ? "تصميمك" : "التحميل"} تلقائياً أول ما ينجح الدفع.
+          {gw.mode === "test" && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">وضع تجريبي</span>}
+        </p>
+      )}
       {!d?.paymentRequestedAt && (
         <form onSubmit={(e) => { e.preventDefault(); apply(); }} className="mt-3 flex gap-2">
           <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="كود الخصم (اختياري)" className="h-9 min-w-0 flex-1 rounded-lg border border-line px-3 text-center text-sm uppercase outline-none focus:border-ink/40" />
@@ -252,10 +271,36 @@ function PayDetails({ amount, plan, coupon, title, designId, contact, pay, fallb
 }
 
 /** تُركّب مرة واحدة في التطبيق */
+/** نتيجة الرجوع من صفحة الدفع (?pay=paid|pending|failed) */
+function PayResult() {
+  const [r, setR] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    const u = new URL(window.location.href);
+    const v = u.searchParams.get("pay");
+    if (!v) return;
+    setR(v);
+    u.searchParams.delete("pay"); u.searchParams.delete("d");
+    window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+    refreshAccount();
+  }, []);
+  if (!r) return null;
+  const t = r === "paid" ? { h: "تم الدفع ✓", b: "تفعّل تصميمك، وتقدر تحمّل ملفاتك الحين.", c: "text-emerald-700" }
+    : r === "failed" ? { h: "ما تم الدفع", b: "العملية ما اكتملت ولا انخصم شي. جرّب مرة ثانية أو استخدم طريقة سداد ثانية.", c: "text-red-600" }
+    : r === "mismatch" ? { h: "نراجع عملية الدفع", b: "وصلنا الدفع بمبلغ مختلف عن المطلوب، وبنراجعه ونتواصل معك.", c: "text-amber-700" }
+    : { h: "بانتظار تأكيد الدفع", b: "إذا دفعت بيتفعّل تصميمك خلال دقائق تلقائياً. افتح «تصاميمي» بعد شوي.", c: "text-amber-700" };
+  return (
+    <Shell title={t.h} onClose={() => setR(null)}>
+      <p className={`text-sm leading-relaxed ${t.c}`}>{t.b}</p>
+      <button onClick={() => setR(null)} className="mt-4 h-10 w-full rounded-xl bg-ink text-sm text-paper">تمام</button>
+    </Shell>
+  );
+}
+
 export function AccountModals({ onOpenDesign }: { onOpenDesign: (d: DesignMeta) => Promise<void> | void }) {
   const { signup, designsOpen, paywall } = useAccount();
   return (
     <>
+      <PayResult />
       {signup.open && <SignupModal reason={signup.reason} />}
       {paywall.open && paywall.designId && <PaywallModal designId={paywall.designId} reason={paywall.reason} />}
       {designsOpen && <DesignsModal onOpen={onOpenDesign} />}

@@ -18,6 +18,8 @@ export interface Me {
   signup?: { available: boolean; email: boolean; phone: boolean; trialDays: number; draftDays?: number; store: string };
   /** الأسعار الحالية من لوحة التحكم */
   prices?: { once: number; monthly: number };
+  /** بوابة الدفع الإلكتروني المفعّلة (تفعيل تلقائي) */
+  gateway?: { id: string; name: string; methods: string; mode: "test" | "live" | null } | null;
   /** طرق السداد المفعّلة من لوحة التحكم */
   pay?: { bank: { bankName: string; holder: string; iban: string } | null; stcpay: { number: string } | null; link: { url: string; label: string } | null; whatsapp: string | null; note: string | null };
 }
@@ -132,6 +134,14 @@ export async function quoteCoupon(code: string, plan: "once" | "monthly"): Promi
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error ?? "تعذر التحقق من الكود");
   return d;
+}
+
+/** ينقل العميل لصفحة الدفع عند البوابة — والتفعيل يصير تلقائي بعد الدفع */
+export async function startPayment(designId: string, plan: "once" | "monthly", coupon?: string) {
+  const r = await fetch("/api/pay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ designId, plan, ...(coupon ? { coupon } : {}) }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.url) throw new Error(d.error ?? "تعذر فتح صفحة الدفع");
+  window.location.href = d.url;
 }
 
 /** الباقات بأسعار لوحة التحكم (أو أسعار البيئة إن لم تُعدّل) */
