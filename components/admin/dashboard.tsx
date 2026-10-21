@@ -292,7 +292,7 @@ function PaymentsTab() {
         <tbody>
           {list.map((d) => (
             <tr key={d.id} className="border-b border-line last:border-0">
-              <td className="p-3 font-medium">{d.title}{d.example && <span className="ms-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">مثال</span>}</td>
+              <td className="p-3 font-medium">{d.title}{d.example && <span className="ms-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">مثال</span>}<div className="font-latin text-[10.5px] font-normal tracking-wider text-muted" dir="ltr" style={{ textAlign: "right" }}>#{d.id.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase()}</div></td>
               <td className="p-3 text-xs" dir="ltr" style={{ textAlign: "right" }}>{d.owner}</td>
               <td className="p-3 text-xs">{kind === "pending" ? <>{planLabel(d.requestedPlan)} · {d.requestedCoupon ? <><s className="text-muted">{d.requestedCoupon.base}</s> {d.requestedCoupon.price} ر.س <span className="rounded bg-emerald-100 px-1 text-[10px] text-emerald-800" dir="ltr">{d.requestedCoupon.code}</span></> : `${d.requestedPlan === "monthly" ? P.monthly : P.once} ر.س`}</> : <PayStatus d={d} />}</td>
               <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.coupon ? ` · كود ${d.paid!.coupon}` : ""}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
@@ -306,7 +306,7 @@ function PaymentsTab() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
-        حتى ربط بوابة الدفع: العميل يختار باقته ويضغط «اختر هذه الباقة» فيظهر طلبه هنا. بعد استلام المبلغ (تحويل بنكي مثلاً) اضغط «تفعيل» ليُفتح له التحميل{DEFAULT_PLANS.once.months ? " والنشر" : ""} فوراً. الشهري يمتد شهراً من تاريخ التفعيل ويُجدَّد بزر «تجديد شهر».
+        حتى ربط بوابة الدفع: العميل يختار باقته ويشوف طرق السداد اللي حطيتها في «الأسعار والسداد»، ويكتب رقم الطلب (#) في التحويل، ويظهر طلبه هنا. بعد استلام المبلغ (تحويل بنكي مثلاً) اضغط «تفعيل» ليُفتح له التحميل{DEFAULT_PLANS.once.months ? " والنشر" : ""} فوراً. الشهري يمتد شهراً من تاريخ التفعيل ويُجدَّد بزر «تجديد شهر».
       </div>
       <section>
         <h3 className="mb-2 text-sm font-semibold">بانتظار التفعيل ({fmt(pending.length)})</h3>
@@ -569,6 +569,65 @@ function FinanceTab() {
 
 type CouponRow = { code: string; type: "percent" | "fixed"; value: number; plans: PlanKind[]; maxUses: number | null; uses: number; expiresAt: number | null; active: boolean; note?: string; createdAt: number };
 const randomCode = () => "SAVE" + Array.from(crypto.getRandomValues(new Uint8Array(3)), (x) => "ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x % 31]).join("");
+type PayM = { bank?: { enabled: boolean; bankName: string; holder: string; iban: string }; stcpay?: { enabled: boolean; number: string }; link?: { enabled: boolean; url: string; label: string }; whatsapp?: string; note?: string; at?: number; by?: string };
+function PayMethodsSection() {
+  const [f, setF] = React.useState<Required<Pick<PayM, "bank" | "stcpay" | "link">> & { whatsapp: string; note: string }>({
+    bank: { enabled: false, bankName: "", holder: "", iban: "" }, stcpay: { enabled: false, number: "" }, link: { enabled: false, url: "", label: "ادفع بمدى أو Apple Pay" }, whatsapp: "", note: "",
+  });
+  const [meta, setMeta] = React.useState<{ at?: number; by?: string } | null>(null);
+  const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => {
+    api<{ methods: PayM | null }>("/api/admin/payment-methods").then(({ methods: m }) => {
+      if (!m) return;
+      setMeta({ at: m.at, by: m.by });
+      setF((x) => ({ bank: m.bank ?? x.bank, stcpay: m.stcpay ?? x.stcpay, link: m.link ?? x.link, whatsapp: m.whatsapp ?? "", note: m.note ?? "" }));
+    }).catch((e) => setMsg({ ok: false, text: e.message }));
+  }, []);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try { const d = await api<{ methods: PayM }>("/api/admin/payment-methods", { method: "PUT", body: JSON.stringify(f) }); setMeta({ at: d.methods.at, by: d.methods.by }); setMsg({ ok: true, text: "تم حفظ طرق السداد، وتظهر للعملاء خلال ثواني." }); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+  };
+  const inp = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-ink/40 disabled:bg-paper disabled:text-muted";
+  const Toggle = ({ on, set, label }: { on: boolean; set: (v: boolean) => void; label: string }) => (
+    <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} /> {label}</label>
+  );
+  return (
+    <section className="rounded-2xl border border-line bg-white p-5">
+      <h3 className="text-sm font-semibold">طرق السداد</h3>
+      <p className="mt-1 text-xs text-muted">بعد ما يختار العميل باقته يشوف المبلغ ورقم الطلب وطرق السداد المفعّلة هنا، مع زر يرسل لك الإيصال على واتساب. لما يوصلك المبلغ فعّل طلبه من «الطلبات والمدفوعات».{meta?.at ? ` آخر تعديل ${date(meta.at)}${meta.by ? ` بواسطة ${meta.by}` : ""}.` : ""}</p>
+      {msg && <div className={`mt-3 rounded-xl px-4 py-2.5 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>{msg.text}</div>}
+      <div className="mt-4 space-y-4">
+        <div className="space-y-2 rounded-xl border border-line p-4">
+          <Toggle on={f.bank.enabled} set={(v) => setF({ ...f, bank: { ...f.bank, enabled: v } })} label="تحويل بنكي" />
+          <div className="grid gap-2 md:grid-cols-3">
+            <label className="text-xs text-muted">اسم البنك<input disabled={!f.bank.enabled} value={f.bank.bankName} onChange={(e) => setF({ ...f, bank: { ...f.bank, bankName: e.target.value } })} placeholder="مصرف الراجحي" className={inp} /></label>
+            <label className="text-xs text-muted">اسم صاحب الحساب<input disabled={!f.bank.enabled} value={f.bank.holder} onChange={(e) => setF({ ...f, bank: { ...f.bank, holder: e.target.value } })} placeholder="مؤسسة ..." className={inp} /></label>
+            <label className="text-xs text-muted">الآيبان<input disabled={!f.bank.enabled} dir="ltr" value={f.bank.iban} onChange={(e) => setF({ ...f, bank: { ...f.bank, iban: e.target.value.toUpperCase() } })} placeholder="SA0000000000000000000000" className={inp + " font-latin"} /></label>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 rounded-xl border border-line p-4">
+            <Toggle on={f.stcpay.enabled} set={(v) => setF({ ...f, stcpay: { ...f.stcpay, enabled: v } })} label="STC Pay" />
+            <label className="text-xs text-muted">رقم STC Pay<input disabled={!f.stcpay.enabled} dir="ltr" value={f.stcpay.number} onChange={(e) => setF({ ...f, stcpay: { ...f.stcpay, number: e.target.value } })} placeholder="05xxxxxxxx" className={inp + " font-latin"} /></label>
+          </div>
+          <div className="space-y-2 rounded-xl border border-line p-4">
+            <Toggle on={f.link.enabled} set={(v) => setF({ ...f, link: { ...f.link, enabled: v } })} label="رابط دفع (مدى، Apple Pay، بطاقات)" />
+            <label className="text-xs text-muted">الرابط من بوابة الدفع (ميسّر أو Tap أو غيرها)<input disabled={!f.link.enabled} dir="ltr" value={f.link.url} onChange={(e) => setF({ ...f, link: { ...f.link, url: e.target.value } })} placeholder="https://..." className={inp + " font-latin"} /></label>
+            <label className="text-xs text-muted">نص الزر<input disabled={!f.link.enabled} value={f.link.label} onChange={(e) => setF({ ...f, link: { ...f.link, label: e.target.value } })} className={inp} /></label>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="text-xs text-muted">رقم واتساب لاستلام الإيصالات<input dir="ltr" value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} placeholder="05xxxxxxxx" className={inp + " font-latin"} /></label>
+          <label className="text-xs text-muted">ملاحظة للعميل (اختياري)<input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="مثلاً: نفعّل الطلبات من 9 الصبح لين 11 الليل" className={inp} /></label>
+        </div>
+        <button disabled={busy} onClick={save} className="h-10 rounded-xl bg-ink px-5 text-sm text-paper">{busy ? "…" : "حفظ طرق السداد"}</button>
+      </div>
+    </section>
+  );
+}
+
 function PricingTab({ onSaved }: { onSaved: (p: { once: number; monthly: number }) => void }) {
   const [pr, setPr] = React.useState<{ current: { once: number; monthly: number }; defaults: { once: number; monthly: number }; override: { at?: number; by?: string } | null } | null>(null);
   const [form, setForm] = React.useState({ once: "", monthly: "" });
@@ -615,6 +674,8 @@ function PricingTab({ onSaved }: { onSaved: (p: { once: number; monthly: number 
           <button disabled={busy === "prices" || !pr.override} onClick={() => savePrices(true)} className="h-10 rounded-xl border border-line px-4 text-sm disabled:opacity-40">رجوع للافتراضي</button>
         </div>
       </section>
+
+      <PayMethodsSection />
 
       <section className="rounded-2xl border border-line bg-white p-5">
         <h3 className="text-sm font-semibold">أكواد الخصم</h3>
@@ -778,7 +839,7 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
   const tabs = [
     { id: "overview", label: "نظرة عامة" }, { id: "payments", label: "الطلبات والمدفوعات" }, { id: "customers", label: "العملاء" }, { id: "designs", label: "التصاميم" },
     ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" },
-    ...(me.owner || me.perms?.includes("pricing") ? [{ id: "pricing", label: "الأسعار والخصومات" }] : []),
+    ...(me.owner || me.perms?.includes("pricing") ? [{ id: "pricing", label: "الأسعار والسداد" }] : []),
     ...(me.owner || me.perms?.includes("finance") ? [{ id: "finance", label: "المالية" }] : []),
     ...(me.owner ? [ { id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
   ];

@@ -18,6 +18,8 @@ export interface Me {
   signup?: { available: boolean; email: boolean; phone: boolean; trialDays: number; draftDays?: number; store: string };
   /** الأسعار الحالية من لوحة التحكم */
   prices?: { once: number; monthly: number };
+  /** طرق السداد المفعّلة من لوحة التحكم */
+  pay?: { bank: { bankName: string; holder: string; iban: string } | null; stcpay: { number: string } | null; link: { url: string; label: string } | null; whatsapp: string | null; note: string | null };
 }
 
 const PREVIEW = process.env.NEXT_PUBLIC_SUFRA_DEMO === "1";

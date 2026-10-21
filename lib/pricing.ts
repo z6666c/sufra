@@ -103,3 +103,63 @@ export async function quoteCoupon(code: string, plan: PlanKind): Promise<{ ok: t
   return { ok: true, coupon: c, base, price: applyCoupon(c, base) };
 }
 export const couponLabel = (c: Pick<Coupon, "type" | "value">) => (c.type === "percent" ? `خصم ${c.value}%` : `خصم ${c.value} ر.س`);
+
+// ── طرق السداد: تظهر للعميل بعد اختيار الباقة (لين ربط بوابة دفع) ──
+export interface PayMethods {
+  bank?: { enabled: boolean; bankName: string; holder: string; iban: string };
+  stcpay?: { enabled: boolean; number: string };
+  link?: { enabled: boolean; url: string; label: string };
+  whatsapp?: string;
+  note?: string;
+  at?: number; by?: string;
+}
+const PAY_KEY = `${KV_PREFIX}:paymethods`;
+let payCache: { v: PayMethods | null; t: number } | null = null;
+export async function getPayMethods(): Promise<PayMethods | null> {
+  if (!stored()) return null;
+  if (payCache && Date.now() - payCache.t < 15_000) return payCache.v;
+  const v = await kvJson.get<PayMethods>(PAY_KEY).catch(() => null);
+  payCache = { v, t: Date.now() };
+  return v;
+}
+const clean = (s: unknown, n = 80) => String(s ?? "").trim().slice(0, n);
+export async function setPayMethods(p: PayMethods, by: string): Promise<PayMethods> {
+  const out: PayMethods = { at: Date.now(), by };
+  if (p.bank) {
+    const iban = clean(p.bank.iban, 40).replace(/\s+/g, "").toUpperCase();
+    if (p.bank.enabled && !/^SA\d{22}$/.test(iban)) throw new Error("الآيبان السعودي يبدأ بـ SA وبعده 22 رقم");
+    if (p.bank.enabled && (!clean(p.bank.bankName) || !clean(p.bank.holder))) throw new Error("اكتب اسم البنك واسم صاحب الحساب");
+    out.bank = { enabled: !!p.bank.enabled, bankName: clean(p.bank.bankName), holder: clean(p.bank.holder), iban };
+  }
+  if (p.stcpay) {
+    const num = clean(p.stcpay.number, 20).replace(/[^\d+]/g, "");
+    if (p.stcpay.enabled && !/^(\+?966|0)?5\d{8}$/.test(num)) throw new Error("رقم STC Pay لازم يكون رقم جوال سعودي");
+    out.stcpay = { enabled: !!p.stcpay.enabled, number: num };
+  }
+  if (p.link) {
+    const url = clean(p.link.url, 300);
+    if (p.link.enabled && !/^https:\/\/[^\s]+$/.test(url)) throw new Error("رابط الدفع لازم يبدأ بـ https://");
+    out.link = { enabled: !!p.link.enabled, url, label: clean(p.link.label, 40) || "ادفع بمدى أو Apple Pay" };
+  }
+  const wa = clean(p.whatsapp, 20).replace(/\D/g, "");
+  if (wa && !/^9665\d{8}$/.test(wa.replace(/^05/, "9665"))) throw new Error("رقم واتساب الإيصالات لازم يكون رقم جوال سعودي");
+  if (wa) out.whatsapp = wa.replace(/^05/, "9665");
+  if (clean(p.note, 300)) out.note = clean(p.note, 300);
+  await kvJson.set(PAY_KEY, out);
+  payCache = null;
+  return out;
+}
+/** اللي يشوفه العميل: الطرق المفعّلة فقط (مع البديل من متغيرات البيئة) */
+export async function publicPayMethods() {
+  const p = await getPayMethods().catch(() => null);
+  return {
+    bank: p?.bank?.enabled ? { bankName: p.bank.bankName, holder: p.bank.holder, iban: p.bank.iban } : null,
+    stcpay: p?.stcpay?.enabled ? { number: p.stcpay.number } : null,
+    link: p?.link?.enabled ? { url: p.link.url, label: p.link.label } : null,
+    whatsapp: p?.whatsapp || process.env.NEXT_PUBLIC_WHATSAPP?.replace(/\D/g, "") || null,
+    note: p?.note || process.env.NEXT_PUBLIC_PAYMENT_NOTE || null,
+  };
+}
+export type PublicPay = Awaited<ReturnType<typeof publicPayMethods>>;
+/** رقم الطلب اللي يكتبه العميل في التحويل عشان تطابقه */
+export const payRef = (designId: string) => designId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase();

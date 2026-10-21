@@ -185,15 +185,69 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
       )}
       {codeMsg && <p className={`mt-1.5 text-xs ${Object.keys(deal).length ? "text-emerald-700" : "text-red-600"}`}>{codeMsg}</p>}
       {d?.paymentRequestedAt ? (
-        <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm leading-relaxed text-emerald-900">
-          استلمنا طلبك{d.requestedCoupon ? ` بسعر ${d.requestedCoupon.price} ر.س بعد ${d.requestedCoupon.code}` : ""}. {note ?? "سنتواصل معك لإتمام الدفع"}{contact ? ` على ${contact}` : ""}، ويُفتح التحميل فور التفعيل.
-          {wa && <> <a className="font-semibold underline" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(`طلب تفعيل: ${d.title} (${d.requestedPlan === "monthly" ? "شهري" : "مرة واحدة"}) — ${contact} — ${designId}`)}`}>تواصل عبر واتساب</a></>}
-        </div>
+        <PayDetails
+          amount={d.requestedCoupon ? d.requestedCoupon.price : PLANS[d.requestedPlan === "monthly" ? "monthly" : "once"].price}
+          plan={d.requestedPlan === "monthly" ? "monthly" : "once"} coupon={d.requestedCoupon?.code} title={d.title} designId={designId}
+          contact={contact} pay={me?.pay} fallbackNote={note} fallbackWa={wa}
+        />
       ) : (
-        <p className="mt-3 text-[11px] text-muted">الدفع الإلكتروني قريباً. اختر باقتك وسنتواصل معك لإتمام الدفع، ويُفتح التحميل فوراً بعد التفعيل.</p>
+        <p className="mt-3 text-[11px] text-muted">
+          اختر باقتك وتظهر لك تفاصيل السداد{methodsLine(me?.pay) ? `: ${methodsLine(me?.pay)}` : ""}. يُفتح التحميل فور تأكيد الدفع.
+        </p>
       )}
       {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}
     </Shell>
+  );
+}
+
+const payRef = (id: string) => id.replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase();
+function methodsLine(p?: NonNullable<ReturnType<typeof useAccount>["me"]>["pay"]) {
+  if (!p) return "";
+  return [p.bank && "تحويل بنكي", p.stcpay && "STC Pay", p.link && "مدى أو Apple Pay"].filter(Boolean).join(" · ");
+}
+function CopyRow({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  const [done, setDone] = React.useState(false);
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 ring-1 ring-line">
+      <div className="min-w-0"><div className="text-[10.5px] text-muted">{label}</div><div className={`truncate text-sm ${mono ? "font-latin tracking-wide" : ""}`} dir={mono ? "ltr" : "auto"}>{value}</div></div>
+      <button type="button" onClick={() => { navigator.clipboard?.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {}); }} className="shrink-0 rounded-md border border-line px-2 py-1 text-[11px]">{done ? "نُسخ ✓" : "نسخ"}</button>
+    </div>
+  );
+}
+/** تفاصيل السداد بعد اختيار الباقة: المبلغ ورقم الطلب وطرق الدفع المفعّلة من لوحة التحكم */
+function PayDetails({ amount, plan, coupon, title, designId, contact, pay, fallbackNote, fallbackWa }: {
+  amount: number; plan: PlanKind; coupon?: string; title: string; designId: string; contact: string;
+  pay?: NonNullable<ReturnType<typeof useAccount>["me"]>["pay"]; fallbackNote?: string; fallbackWa?: string;
+}) {
+  const ref = payRef(designId);
+  const wa = pay?.whatsapp || fallbackWa;
+  const note = pay?.note || fallbackNote;
+  const any = !!(pay?.bank || pay?.stcpay || pay?.link);
+  const msg = `السلام عليكم، أرسلت مبلغ ${amount} ر.س لطلب ${ref} (${title} — ${plan === "monthly" ? "اشتراك شهري" : "مرة واحدة"}${coupon ? ` — كود ${coupon}` : ""}). هذا إيصال التحويل. ${contact}`;
+  return (
+    <div className="mt-4 space-y-3 rounded-xl bg-emerald-50 p-3.5 text-sm text-emerald-950">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div><div className="text-xs text-emerald-800">المبلغ المطلوب</div><div className="font-display text-2xl font-bold">{amount} <span className="text-sm font-medium">ر.س</span></div></div>
+        <div className="text-left"><div className="text-xs text-emerald-800">رقم الطلب (اكتبه في التحويل)</div><div className="font-latin text-lg font-bold tracking-widest" dir="ltr">{ref}</div></div>
+      </div>
+      {pay?.link && (
+        <a href={pay.link.url} target="_blank" rel="noreferrer" className="flex h-10 items-center justify-center rounded-lg bg-ink text-sm font-medium text-paper">{pay.link.label} ←</a>
+      )}
+      {pay?.bank && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-semibold">تحويل بنكي</div>
+          <CopyRow label="الآيبان" value={pay.bank.iban} />
+          <div className="grid grid-cols-2 gap-1.5"><CopyRow label="اسم صاحب الحساب" value={pay.bank.holder} mono={false} /><CopyRow label="البنك" value={pay.bank.bankName} mono={false} /></div>
+        </div>
+      )}
+      {pay?.stcpay && (
+        <div className="space-y-1.5"><div className="text-xs font-semibold">STC Pay</div><CopyRow label="رقم STC Pay" value={pay.stcpay.number} /></div>
+      )}
+      {note && <p className="text-xs leading-relaxed">{note}</p>}
+      {!any && !note && <p className="text-xs">استلمنا طلبك، وبنتواصل معك{contact ? ` على ${contact}` : ""} لإتمام الدفع.</p>}
+      <p className="text-[11px] leading-relaxed text-emerald-800">بعد ما تدفع{wa ? " أرسل الإيصال على واتساب" : ""}، ويُفتح {plan === "monthly" ? "اشتراكك" : "التحميل"} فور تأكيد الدفع.</p>
+      {wa && <a target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(msg)}`} className="flex h-10 items-center justify-center rounded-lg bg-[#25D366] text-sm font-semibold text-white">أرسل إيصال الدفع على واتساب</a>}
+    </div>
   );
 }
 
