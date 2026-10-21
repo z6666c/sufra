@@ -1,0 +1,25 @@
+{
+  "name": "sufra-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "description": "تطبيق الجوال (آيفون وأندرويد) — غلاف Capacitor للموقع",
+  "scripts": {
+    "config": "node scripts/config.mjs",
+    "add:android": "npx cap add android && npx capacitor-assets generate --android && node scripts/native.mjs android && npx cap sync android",
+    "add:ios": "npx cap add ios && npx capacitor-assets generate --ios && node scripts/native.mjs ios && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.0.0"
+  }
+}
