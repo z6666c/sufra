@@ -1,8 +1,9 @@
 "use client";
 // نافذة التسجيل بالبريد أو الجوال (رمز تحقق) + نافذة «تصاميمي»
 import * as React from "react";
-import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, quoteCoupon, usePlans, startPayment, openPaywall, useAccount, type DesignMeta } from "./account-client";
+import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, quoteCoupon, usePlans, startPayment, openPaywall, deleteAccount, useAccount, type DesignMeta } from "./account-client";
 import { PREVIEW_NOTE, type PlanKind } from "@/lib/plans";
+import { storeApp } from "@/lib/native";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   React.useEffect(() => {
@@ -68,6 +69,7 @@ function SignupModal({ reason }: { reason?: string }) {
           {s && !s.phone ? <p className="text-[11px] text-muted">التسجيل بالجوال غير مفعّل حالياً — استخدم البريد الإلكتروني.</p>
             : <p className="text-[11px] text-muted">يوصلك الرمز على بريدك، أو على واتساب إذا كتبت رقم جوالك.</p>}
           <button disabled={busy || ident.trim().length < 5} className="h-11 w-full rounded-xl bg-ink font-medium text-paper disabled:opacity-50">{busy ? "…" : "أرسل رمز التحقق"}</button>
+          <p className="text-center text-[11px] text-muted">بالتسجيل توافق على <a href="/terms" target="_blank" className="underline">شروط الاستخدام</a> و<a href="/privacy" target="_blank" className="underline">سياسة الخصوصية</a>.</p>
         </form>
       ) : (
         <form onSubmit={(e) => { e.preventDefault(); verify(); }} className="space-y-3">
@@ -91,6 +93,8 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
   const [busy, setBusy] = React.useState<string | null>(null);
   const list = me?.designs ?? [];
   const c = me?.customer;
+  const [del, setDel] = React.useState<"idle" | "confirm" | "busy">("idle");
+  const [delErr, setDelErr] = React.useState("");
   return (
     <Shell title="تصاميمي" onClose={closeDesigns}>
       {c && (
@@ -109,18 +113,34 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
                   <div className={`text-[11px] ${!designPaid(d) && left !== null && left <= 2 ? "text-red-600" : "text-muted"}`}>
                     {designPaid(d)
                       ? <span className="font-semibold text-emerald-700">مدفوع{d.paid?.plan === "monthly" ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}` : ""}</span>
-                      : d.paymentRequestedAt ? <span className="font-semibold text-amber-700">بانتظار تفعيل الدفع</span>
+                      : d.paymentRequestedAt && !storeApp() ? <span className="font-semibold text-amber-700">بانتظار تفعيل الدفع</span>
                       : <>معاينة — {left === null ? "" : `تُحذف المسودة بعد ${left} يوم`}</>}
                     {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}
                   </div>
                 </div>
-                {me?.gateway && d.paid?.plan === "monthly" && <button disabled={!!busy} onClick={() => { closeDesigns(); openPaywall(d.id, "جدّد اشتراكك الشهري."); }} className="rounded-lg border border-line px-2.5 py-1.5 text-xs">تجديد</button>}
+                {me?.gateway && !storeApp() && d.paid?.plan === "monthly" && <button disabled={!!busy} onClick={() => { closeDesigns(); openPaywall(d.id, "جدّد اشتراكك الشهري."); }} className="rounded-lg border border-line px-2.5 py-1.5 text-xs">تجديد</button>}
                 <button disabled={!!busy} onClick={async () => { setBusy(d.id); await onOpen(d); setBusy(null); closeDesigns(); }} className="rounded-lg bg-ink px-3 py-1.5 text-xs text-paper disabled:opacity-50">{busy === d.id ? "…" : "فتح"}</button>
                 <button disabled={!!busy} onClick={() => deleteDesignRemote(d.id)} className="rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">حذف</button>
               </li>
             );
           })}
         </ul>
+      )}
+      {c && (
+        <div className="mt-5 border-t border-line pt-3">
+          {del === "idle" ? (
+            <button onClick={() => setDel("confirm")} className="text-xs text-red-600 hover:underline">حذف حسابي</button>
+          ) : (
+            <div className="rounded-xl bg-red-50 p-3 text-xs leading-relaxed text-red-800">
+              <b>حذف الحساب نهائياً:</b> بنحذف حسابك وكل تصاميمك{list.some((d) => designPaid(d)) ? "، ومنها التصاميم المدفوعة،" : ""} وما نقدر نرجّعها. متأكد؟
+              {delErr && <div className="mt-1 font-semibold">{delErr}</div>}
+              <div className="mt-2 flex gap-2">
+                <button disabled={del === "busy"} onClick={async () => { setDel("busy"); setDelErr(""); try { await deleteAccount(); } catch (e) { setDelErr((e as Error).message); setDel("confirm"); } }} className="h-8 rounded-lg bg-red-600 px-3 font-semibold text-white">{del === "busy" ? "…" : "نعم، احذف حسابي"}</button>
+                <button onClick={() => setDel("idle")} className="h-8 rounded-lg border border-red-200 bg-white px-3">إلغاء</button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </Shell>
   );
@@ -160,6 +180,13 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
     setBusy(plan); setErr("");
     try { await startPayment(designId, plan, deal[plan]?.code); } catch (e) { setErr((e as Error).message); setBusy(null); }
   };
+  // تطبيق المتجر: ما نعرض أسعار ولا شراء ولا روابط دفع (الشراء من الموقع فقط)
+  if (storeApp() && !designPaid(d)) return (
+    <Shell title="التصميم غير مفعّل" onClose={closePaywall}>
+      <p className="text-sm leading-relaxed text-muted">«{d?.title ?? "تصميمك"}» غير مفعّل على حسابك بعد، فهو متاح كمعاينة بعلامة مائية. التصاميم المفعّلة على حسابك تقدر تحمّلها وتشاركها من هنا مباشرة.</p>
+      <button onClick={closePaywall} className="mt-4 h-10 w-full rounded-xl bg-ink text-sm text-paper">تمام</button>
+    </Shell>
+  );
   if (designPaid(d)) return <Shell title="تم التفعيل" onClose={closePaywall}><p className="text-sm">التصميم مدفوع — أعد المحاولة للتحميل.</p></Shell>;
   return (
     <Shell title="افتح التحميل" onClose={closePaywall}>

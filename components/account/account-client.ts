@@ -136,6 +136,15 @@ export async function quoteCoupon(code: string, plan: "once" | "monthly"): Promi
   return d;
 }
 
+/** حذف الحساب نهائياً */
+export async function deleteAccount() {
+  const r = await fetch("/api/account/me", { method: "DELETE" });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? "تعذر حذف الحساب");
+  emit({ me: null, designsOpen: false });
+  await refreshAccount();
+}
+
 /** ينقل العميل لصفحة الدفع عند البوابة — والتفعيل يصير تلقائي بعد الدفع */
 export async function startPayment(designId: string, plan: "once" | "monthly", coupon?: string) {
   const r = await fetch("/api/pay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ designId, plan, ...(coupon ? { coupon } : {}) }) });

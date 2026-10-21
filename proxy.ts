@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, readToken, publicDemo } from "@/lib/auth";
 
 // المنيو المنشور للزبائن عام (/m/...) ويُقرأ بدون دخول
-const PUBLIC = [/^\/login$/, /^\/api\/auth\//, /^\/api\/account\//, /^\/m\//, /^\/api\/pay\//];
+const PUBLIC = [/^\/login$/, /^\/api\/auth\//, /^\/api\/account\//, /^\/m\//, /^\/api\/pay\//, /^\/(privacy|terms|delete-account)$/];
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

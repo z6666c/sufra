@@ -1,4 +1,5 @@
 "use client";
+import { nativeApp, saveFile } from "../native";
 // تحويل عناصر المعاينة إلى صور عالية الدقة مع تضمين الخطوط
 import { getFontEmbedCSS, toCanvas } from "html-to-image";
 
@@ -50,6 +51,8 @@ export function resizeCanvas(src: HTMLCanvasElement, size: number): HTMLCanvasEl
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
+  // داخل تطبيق الجوال: حفظ ومشاركة بدل رابط التنزيل
+  if (nativeApp()) { saveFile(blob, filename).catch((e) => console.error("[save]", e)); return; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

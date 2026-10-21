@@ -1,4 +1,5 @@
 "use client";
+import { storeApp } from "@/lib/native";
 import { ensureAccount, useAccount, useEntitled, usePlans } from "../account/account-client";
 import { Watermark, PreviewBadge } from "../account/watermark";
 import { paidGate } from "./paid-gate";
@@ -99,7 +100,7 @@ export function Studio() {
         </div>
         <div className="relative mx-auto max-w-6xl px-5 py-7">
           <Watermark show={!paid} text="معاينة · سُفرة" />
-          <PreviewBadge show={!paid} label={`النشر والتحميل بعد الدفع: ${PLANS.once.price} ${PLANS.once.currency} مرة واحدة أو ${PLANS.monthly.price} شهرياً`} onUnlock={() => { paidGate("لنشر المنيو وتحميل الملفات."); }} />
+          <PreviewBadge show={!paid} label={storeApp() ? "نسخة معاينة بعلامة مائية" : `النشر والتحميل بعد الدفع: ${PLANS.once.price} ${PLANS.once.currency} مرة واحدة أو ${PLANS.monthly.price} شهرياً`} onUnlock={() => { paidGate("لنشر المنيو وتحميل الملفات."); }} />
           {outTab === "digital" && <DigitalTab />}
           {outTab === "print" && <PrintTab />}
           {outTab === "table" && <TableTab />}
