@@ -358,7 +358,7 @@ function PermsEditor({ data, level, perms, onChange }: { data: TeamData; level: 
   );
 }
 
-function TeamTab() {
+function TeamTab({ demo = false }: { demo?: boolean }) {
   const [data, setData] = React.useState<TeamData | null>(null);
   const [err, setErr] = React.useState("");
   const [form, setForm] = React.useState({ username: "", name: "", password: genPassword(), level: "manager" as Member["level"], perms: [] as string[] });
@@ -394,6 +394,7 @@ function TeamTab() {
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
         <b>الملكية لك وحدك:</b> حسابك (المالك) ثابت من إعدادات الخادم ولا يقدر أحد يعدّله أو يحذفه. أي تغيير في دور العضو أو كلمة مروره أو إيقافه يُخرجه من جلسته فوراً.
       </div>
+      {demo && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900"><b>وضع العرض:</b> تقدر تجرّب إنشاء الحسابات وتحديد الصلاحيات هنا، لكنها مؤقتة وما يقدر العضو يسجل دخول فيها لين تربط Upstash Redis.</div>}
       {err && <Problem text={err} />}
       {ok && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{ok}</div>}
       {created && (
@@ -836,7 +837,7 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
       {tab === "settings" && me.owner && <SettingsTab rows={settings} />}
       {tab === "pricing" && (me.owner || me.perms?.includes("pricing")) && (kvReady ? <PricingTab onSaved={(p) => { setPrices(p); setVer((v) => v + 1); }} /> : <Empty text="تعديل الأسعار يحتاج ربط قاعدة البيانات." />)}
       {tab === "finance" && (me.owner || me.perms?.includes("finance")) && (kvReady ? <FinanceTab key={ver} /> : <Empty text="تظهر المالية بعد ربط قاعدة البيانات." />)}
-      {tab === "team" && me.owner && (kvReady && !demoStore ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
+      {tab === "team" && me.owner && (kvReady ? <TeamTab demo={demoStore} /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
       {extraTabs.map((t) => tab === t.id && <div key={t.id}>{t.node}</div>)}
     </main>
     </PricesCtx.Provider>

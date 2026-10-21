@@ -2,7 +2,7 @@
 // - المالك ثابت ولا يمكن تعديله أو حذفه من اللوحة
 // - مستويان: مشرف (manager) يدير العملاء والمدفوعات، ومشاهد (viewer) قراءة فقط
 // - كلمات المرور مخزنة كبصمة PBKDF2-SHA256 مع ملح عشوائي
-import { kv, kvJson, kvAvailable } from "./kv";
+import { kv, kvJson, kvAvailable, kvMemory } from "./kv";
 import { accounts } from "./auth";
 
 const APP = "sufra";
@@ -62,7 +62,7 @@ const safeEq = (a: string, b: string) => {
 export const toPublic = ({ salt: _s, hash: _h, ...m }: Member): MemberPublic & { effective: Perm[] } => ({ ...m, effective: effectivePerms(m) });
 
 export async function getMember(username: string): Promise<Member | null> {
-  if (!kvAvailable()) return null;
+  if (!kvAvailable() && !kvMemory()) return null; // وضع العرض: للمعاينة فقط، الدخول بها متوقف
   return kvJson.get<Member>(key(username.toLowerCase()));
 }
 
@@ -124,7 +124,8 @@ export async function removeMember(username: string) {
 
 /** تحقق دخول عضو الفريق — يعيد العضو أو null */
 export async function verifyMember(username: string, password: string): Promise<Member | null> {
-  const m = await getMember(username.trim());
+  // دخول الأعضاء يحتاج قاعدة بيانات دائمة (في وضع العرض الحسابات مؤقتة)
+  const m = kvAvailable() ? await getMember(username.trim()) : null;
   if (!m || m.disabled) {
     await pbkdf2(password, "timing-pad"); // زمن متقارب سواء وُجد الحساب أم لا
     return null;
