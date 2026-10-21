@@ -1,8 +1,8 @@
 "use client";
 // نافذة التسجيل بالبريد أو الجوال (رمز تحقق) + نافذة «تصاميمي»
 import * as React from "react";
-import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, useAccount, type DesignMeta } from "./account-client";
-import { PLANS, PREVIEW_NOTE, type PlanKind } from "@/lib/plans";
+import { closeDesigns, closePaywall, closeSignup, daysLeft, deleteDesignRemote, designPaid, refreshAccount, requestActivation, quoteCoupon, usePlans, useAccount, type DesignMeta } from "./account-client";
+import { PREVIEW_NOTE, type PlanKind } from "@/lib/plans";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   React.useEffect(() => {
@@ -133,9 +133,26 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
   const note = process.env.NEXT_PUBLIC_PAYMENT_NOTE;
   const wa = process.env.NEXT_PUBLIC_WHATSAPP?.replace(/\D/g, "");
   const contact = me?.customer?.email ?? me?.customer?.phone ?? "";
+  const PLANS = usePlans();
+  const [code, setCode] = React.useState("");
+  const [deal, setDeal] = React.useState<Partial<Record<PlanKind, { code: string; label: string; price: number }>>>({});
+  const [codeMsg, setCodeMsg] = React.useState("");
+  const [checking, setChecking] = React.useState(false);
+  const apply = async () => {
+    const c = code.trim();
+    if (!c) return;
+    setChecking(true); setCodeMsg("");
+    const res = await Promise.allSettled((["once", "monthly"] as PlanKind[]).map((k) => quoteCoupon(c, k)));
+    const next: typeof deal = {};
+    res.forEach((x, i) => { if (x.status === "fulfilled") next[(["once", "monthly"] as PlanKind[])[i]] = x.value; });
+    setDeal(next);
+    const first = res.find((x) => x.status === "rejected") as PromiseRejectedResult | undefined;
+    setCodeMsg(Object.keys(next).length ? `تم تطبيق الكود: ${Object.values(next)[0]!.label}` : (first?.reason as Error)?.message ?? "كود الخصم غير صحيح");
+    setChecking(false);
+  };
   const pick = async (plan: PlanKind) => {
     setBusy(plan); setErr("");
-    try { await requestActivation(designId, plan); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+    try { await requestActivation(designId, plan, deal[plan]?.code); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
   };
   if (designPaid(d)) return <Shell title="تم التفعيل" onClose={closePaywall}><p className="text-sm">التصميم مدفوع — أعد المحاولة للتحميل.</p></Shell>;
   return (
@@ -148,7 +165,10 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
           return (
             <div key={k} className={`flex flex-col rounded-xl border p-4 ${chosen ? "border-ember ring-2 ring-ember/30" : "border-line"}`}>
               <div className="text-xs text-muted">{p.name}</div>
-              <div className="mb-2 font-display text-2xl font-bold">{p.price} <span className="text-sm font-medium text-muted">{p.currency} {p.period}</span></div>
+              <div className="mb-2 font-display text-2xl font-bold">
+                {deal[k] ? <><span className="me-1 text-base font-medium text-muted line-through">{p.price}</span>{deal[k]!.price}</> : p.price} <span className="text-sm font-medium text-muted">{p.currency} {p.period}</span>
+              </div>
+              {deal[k] && <div className="-mt-1 mb-2 text-[11px] font-semibold text-emerald-700">{deal[k]!.label}{k === "monthly" ? " على أول شهر" : ""}</div>}
               <ul className="mb-3 flex-1 space-y-1 text-[11.5px] leading-relaxed text-muted">{p.includes.map((x) => <li key={x}>✓ {x}</li>)}</ul>
               <button disabled={!!busy} onClick={() => pick(k)} className={`h-9 rounded-lg text-sm font-medium ${chosen ? "bg-ember text-white" : "bg-ink text-paper"} disabled:opacity-50`}>
                 {busy === k ? "…" : chosen ? "تم إرسال الطلب ✓" : "اختر هذه الباقة"}
@@ -157,9 +177,16 @@ function PaywallModal({ designId, reason }: { designId: string; reason?: string 
           );
         })}
       </div>
+      {!d?.paymentRequestedAt && (
+        <form onSubmit={(e) => { e.preventDefault(); apply(); }} className="mt-3 flex gap-2">
+          <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="كود الخصم (اختياري)" className="h-9 min-w-0 flex-1 rounded-lg border border-line px-3 text-center text-sm uppercase outline-none focus:border-ink/40" />
+          <button disabled={checking || !code.trim()} className="h-9 rounded-lg border border-line px-3 text-sm disabled:opacity-50">{checking ? "…" : "تطبيق"}</button>
+        </form>
+      )}
+      {codeMsg && <p className={`mt-1.5 text-xs ${Object.keys(deal).length ? "text-emerald-700" : "text-red-600"}`}>{codeMsg}</p>}
       {d?.paymentRequestedAt ? (
         <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm leading-relaxed text-emerald-900">
-          استلمنا طلبك. {note ?? "سنتواصل معك لإتمام الدفع"}{contact ? ` على ${contact}` : ""}، ويُفتح التحميل فور التفعيل.
+          استلمنا طلبك{d.requestedCoupon ? ` بسعر ${d.requestedCoupon.price} ر.س بعد ${d.requestedCoupon.code}` : ""}. {note ?? "سنتواصل معك لإتمام الدفع"}{contact ? ` على ${contact}` : ""}، ويُفتح التحميل فور التفعيل.
           {wa && <> <a className="font-semibold underline" target="_blank" rel="noreferrer" href={`https://wa.me/${wa}?text=${encodeURIComponent(`طلب تفعيل: ${d.title} (${d.requestedPlan === "monthly" ? "شهري" : "مرة واحدة"}) — ${contact} — ${designId}`)}`}>تواصل عبر واتساب</a></>}
         </div>
       ) : (

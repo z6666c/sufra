@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!authSecret()) return NextResponse.json({ error: "الخادم غير مهيأ: أضف AUTH_SECRET (16 حرفاً على الأقل)" }, { status: 500 });
   let body: { username?: string; password?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 }); }
-  let acc: { username: string; role: "admin" | "demo" | "customer"; member?: { v: number; level: "manager" | "viewer" } } | null = await verifyLogin(String(body.username ?? ""), String(body.password ?? ""));
+  let acc: { username: string; role: "admin" | "demo" | "customer"; member?: { v: number; level: "manager" | "viewer" | "custom" } } | null = await verifyLogin(String(body.username ?? ""), String(body.password ?? ""));
   if (!acc) {
     const m = await verifyMember(String(body.username ?? ""), String(body.password ?? "")).catch(() => null);
     if (m) acc = { username: m.username, role: "admin", member: { v: m.v, level: m.level } };

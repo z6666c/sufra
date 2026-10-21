@@ -1,16 +1,20 @@
 "use client";
 // لوحة الإدارة الكاملة: نظرة عامة، العملاء، التصاميم، الاستخدام والتكاليف، الإعدادات
 import * as React from "react";
-import { PLANS, type PlanKind } from "@/lib/plans";
+import { PLANS as DEFAULT_PLANS, type PlanKind } from "@/lib/plans";
 
 type Customer = { id: string; email?: string; phone?: string; name?: string; status: "trial" | "paid"; createdAt: number; lastLoginAt: number; trialEndsAt: number; note?: string; designs: number; example?: boolean };
-type Paid = { plan: PlanKind; at: number; amount: number; until?: number | null; ref?: string; by?: string } | null;
-export type AdminMe = { username: string; owner: boolean; level: "owner" | "manager" | "viewer" };
+type Paid = { plan: PlanKind; at: number; amount: number; until?: number | null; ref?: string; by?: string; coupon?: string } | null;
+type ReqCoupon = { code: string; plan: PlanKind; base: number; price: number } | null;
+/** الأسعار الحالية من «الأسعار والخصومات» (تتحدث بعد الحفظ) */
+const PricesCtx = React.createContext<{ once: number; monthly: number }>({ once: DEFAULT_PLANS.once.price, monthly: DEFAULT_PLANS.monthly.price });
+const usePrices = () => React.useContext(PricesCtx);
+export type AdminMe = { username: string; owner: boolean; level: "owner" | "manager" | "viewer" | "custom"; perms?: string[] };
 const MeCtx = React.createContext<AdminMe>({ username: "", owner: true, level: "owner" });
-const useCanWrite = () => React.useContext(MeCtx).level !== "viewer";
+const useCan = (p: string) => { const m = React.useContext(MeCtx); return m.owner || !!m.perms?.includes(p); };
 const useIsOwner = () => React.useContext(MeCtx).owner;
-const LEVELS: Record<AdminMe["level"], string> = { owner: "المالك", manager: "مشرف", viewer: "مشاهد" };
-type Design = { id: string; customerId: string; owner?: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number; paid?: Paid; paymentRequestedAt?: number | null; requestedPlan?: PlanKind | null; example?: boolean };
+const LEVELS: Record<AdminMe["level"], string> = { owner: "المالك", manager: "مشرف", viewer: "مشاهد", custom: "صلاحيات مخصصة" };
+type Design = { id: string; customerId: string; owner?: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number; paid?: Paid; paymentRequestedAt?: number | null; requestedPlan?: PlanKind | null; requestedCoupon?: ReqCoupon; example?: boolean };
 const isPaid = (d: Design) => !!d.paid && (!d.paid.until || d.paid.until > Date.now());
 const planLabel = (k?: PlanKind | null) => (k === "monthly" ? "شهري" : "مرة واحدة");
 type Overview = {
@@ -113,7 +117,7 @@ function OverviewTab() {
 }
 
 function CustomersTab() {
-  const canWrite = useCanWrite(); const isOwner = useIsOwner();
+  const canWrite = useCan("customers"); const isOwner = useIsOwner();
   const [rows, setRows] = React.useState<Customer[] | null>(null);
   const [q, setQ] = React.useState("");
   const [err, setErr] = React.useState("");
@@ -182,7 +186,7 @@ function CustomersTab() {
 }
 
 function DesignsTab() {
-  const canWrite = useCanWrite();
+  const canWrite = useCan("designs");
   const [rows, setRows] = React.useState<Design[] | null>(null);
   const [err, setErr] = React.useState("");
   const [filter, setFilter] = React.useState<"all" | "paid" | "expiring">("all");
@@ -244,7 +248,9 @@ function PayStatus({ d }: { d: Design }) {
 /** أزرار التفعيل: شهري أو مرة واحدة، وتجديد/إلغاء للمدفوع */
 function ActivateButtons({ d, onDone }: { d: Design; onDone: () => void }) {
   const [busy, setBusy] = React.useState(false);
-  const canWrite = useCanWrite();
+  const canWrite = useCan("payments");
+  const P = usePrices();
+  const priceFor = (k: PlanKind) => (d.requestedCoupon && d.requestedCoupon.plan === k ? d.requestedCoupon.price : P[k]);
   const go = async (body: object, ask?: string) => {
     let ref: string | null = "";
     if (ask) { ref = prompt(ask, ""); if (ref === null) return; }
@@ -260,13 +266,14 @@ function ActivateButtons({ d, onDone }: { d: Design; onDone: () => void }) {
   );
   return (
     <>
-      <button disabled={busy} onClick={() => go({ action: "paid", plan: "once" }, `رقم العملية أو التحويل (اختياري) — ${PLANS.once.price} ر.س`)} className={`rounded-lg px-2 py-1 text-xs text-white ${d.requestedPlan === "once" ? "bg-emerald-600" : "bg-emerald-600/80"}`}>تفعيل مرة واحدة {PLANS.once.price}</button>
-      <button disabled={busy} onClick={() => go({ action: "paid", plan: "monthly" }, `رقم العملية أو التحويل (اختياري) — ${PLANS.monthly.price} ر.س`)} className={`rounded-lg px-2 py-1 text-xs text-white ${d.requestedPlan === "monthly" ? "bg-sky-700" : "bg-sky-700/80"}`}>تفعيل شهري {PLANS.monthly.price}</button>
+      <button disabled={busy} onClick={() => go({ action: "paid", plan: "once" }, `رقم العملية أو التحويل (اختياري) — ${priceFor("once")} ر.س`)} className={`rounded-lg px-2 py-1 text-xs text-white ${d.requestedPlan === "once" ? "bg-emerald-600" : "bg-emerald-600/80"}`}>تفعيل مرة واحدة {priceFor("once")}</button>
+      <button disabled={busy} onClick={() => go({ action: "paid", plan: "monthly" }, `رقم العملية أو التحويل (اختياري) — ${priceFor("monthly")} ر.س`)} className={`rounded-lg px-2 py-1 text-xs text-white ${d.requestedPlan === "monthly" ? "bg-sky-700" : "bg-sky-700/80"}`}>تفعيل شهري {priceFor("monthly")}</button>
     </>
   );
 }
 
 function PaymentsTab() {
+  const P = usePrices();
   const [rows, setRows] = React.useState<Design[] | null>(null);
   const [err, setErr] = React.useState("");
   const load = React.useCallback(() => { api<{ designs: Design[] }>("/api/admin/designs").then((d) => setRows(d.designs)).catch((e) => setErr(e.message)); }, []);
@@ -287,8 +294,8 @@ function PaymentsTab() {
             <tr key={d.id} className="border-b border-line last:border-0">
               <td className="p-3 font-medium">{d.title}{d.example && <span className="ms-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] text-sky-800">مثال</span>}</td>
               <td className="p-3 text-xs" dir="ltr" style={{ textAlign: "right" }}>{d.owner}</td>
-              <td className="p-3 text-xs">{kind === "pending" ? `${planLabel(d.requestedPlan)} · ${d.requestedPlan === "monthly" ? PLANS.monthly.price : PLANS.once.price} ر.س` : <PayStatus d={d} />}</td>
-              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
+              <td className="p-3 text-xs">{kind === "pending" ? <>{planLabel(d.requestedPlan)} · {d.requestedCoupon ? <><s className="text-muted">{d.requestedCoupon.base}</s> {d.requestedCoupon.price} ر.س <span className="rounded bg-emerald-100 px-1 text-[10px] text-emerald-800" dir="ltr">{d.requestedCoupon.code}</span></> : `${d.requestedPlan === "monthly" ? P.monthly : P.once} ر.س`}</> : <PayStatus d={d} />}</td>
+              <td className="p-3 text-xs text-muted">{kind === "pending" ? new Date(d.paymentRequestedAt!).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : `${fmt(d.paid!.amount)} ر.س · ${date(d.paid!.at)}${d.paid!.coupon ? ` · كود ${d.paid!.coupon}` : ""}${d.paid!.ref ? ` · ${d.paid!.ref}` : ""}${d.paid!.by ? ` · بواسطة ${d.paid!.by}` : ""}`}</td>
               <td className="p-3 text-left"><span className="inline-flex flex-wrap justify-end gap-1"><ActivateButtons d={d} onDone={load} /></span></td>
             </tr>
           ))}
@@ -299,7 +306,7 @@ function PaymentsTab() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
-        حتى ربط بوابة الدفع: العميل يختار باقته ويضغط «اختر هذه الباقة» فيظهر طلبه هنا. بعد استلام المبلغ (تحويل بنكي مثلاً) اضغط «تفعيل» ليُفتح له التحميل{PLANS.once.months ? " والنشر" : ""} فوراً. الشهري يمتد شهراً من تاريخ التفعيل ويُجدَّد بزر «تجديد شهر».
+        حتى ربط بوابة الدفع: العميل يختار باقته ويضغط «اختر هذه الباقة» فيظهر طلبه هنا. بعد استلام المبلغ (تحويل بنكي مثلاً) اضغط «تفعيل» ليُفتح له التحميل{DEFAULT_PLANS.once.months ? " والنشر" : ""} فوراً. الشهري يمتد شهراً من تاريخ التفعيل ويُجدَّد بزر «تجديد شهر».
       </div>
       <section>
         <h3 className="mb-2 text-sm font-semibold">بانتظار التفعيل ({fmt(pending.length)})</h3>
@@ -317,43 +324,78 @@ function genPassword() {
   const a = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
   return Array.from(crypto.getRandomValues(new Uint8Array(14)), (x) => a[x % a.length]).join("");
 }
-type Member = { username: string; name: string; level: "manager" | "viewer"; disabled?: boolean; createdAt: number; lastLoginAt?: number };
+type Perm = { id: string; label: string; hint: string };
+type Member = { username: string; name: string; level: "manager" | "viewer" | "custom"; perms?: string[]; effective: string[]; disabled?: boolean; createdAt: number; lastLoginAt?: number };
+type TeamData = { owner: string; members: Member[]; perms: Perm[]; presets: Record<"manager" | "viewer", string[]> };
+const ROLE_INFO: Record<Member["level"], string> = { manager: "مشرف", viewer: "مشاهد", custom: "مخصص" };
+
+/** اختيار الدور والصلاحيات — المشرف والمشاهد قوالب جاهزة، والمخصص تختار فيه بنفسك */
+function PermsEditor({ data, level, perms, onChange }: { data: TeamData; level: Member["level"]; perms: string[]; onChange: (l: Member["level"], p: string[]) => void }) {
+  const active = level === "custom" ? perms : data.presets[level];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {(["manager", "viewer", "custom"] as Member["level"][]).map((l) => (
+          <button type="button" key={l} onClick={() => onChange(l, l === "custom" ? (level === "custom" ? perms : data.presets[level as "manager" | "viewer"] ?? []) : [])}
+            className={`rounded-full px-3 py-1.5 text-xs ${level === l ? "bg-ink text-paper" : "border border-line bg-white"}`}>
+            {l === "manager" ? "مشرف (جاهز)" : l === "viewer" ? "مشاهد فقط" : "صلاحيات مخصصة"}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {data.perms.map((p) => {
+          const on = active.includes(p.id);
+          return (
+            <label key={p.id} className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 text-sm ${on ? "border-emerald-300 bg-emerald-50" : "border-line bg-white"} ${level !== "custom" ? "cursor-default opacity-80" : ""}`}>
+              <input type="checkbox" className="mt-1" checked={on} disabled={level !== "custom"} onChange={(e) => onChange("custom", e.target.checked ? [...perms, p.id] : perms.filter((x) => x !== p.id))} />
+              <span><span className="font-medium">{p.label}</span><span className="block text-[11px] text-muted">{p.hint}</span></span>
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-muted">كل الأعضاء يشوفون: نظرة عامة، والطلبات، والعملاء، والتصاميم، والاستخدام. وللمالك فقط: إدارة الفريق، وحذف العملاء، والإعدادات.{level !== "custom" ? " اختر «صلاحيات مخصصة» لتحديدها بنفسك." : ""}</p>
+    </div>
+  );
+}
+
 function TeamTab() {
-  const [data, setData] = React.useState<{ owner: string; members: Member[] } | null>(null);
+  const [data, setData] = React.useState<TeamData | null>(null);
   const [err, setErr] = React.useState("");
-  const [form, setForm] = React.useState({ username: "", name: "", password: genPassword(), level: "manager" as Member["level"] });
+  const [form, setForm] = React.useState({ username: "", name: "", password: genPassword(), level: "manager" as Member["level"], perms: [] as string[] });
   const [busy, setBusy] = React.useState<string | null>(null);
   const [created, setCreated] = React.useState<{ username: string; password: string } | null>(null);
   const [confirm, setConfirm] = React.useState<string | null>(null);
-  const load = React.useCallback(() => { api<{ owner: string; members: Member[] }>("/api/admin/team").then(setData).catch((e) => setErr(e.message)); }, []);
+  const [edit, setEdit] = React.useState<{ u: string; level: Member["level"]; perms: string[] } | null>(null);
+  const [ok, setOk] = React.useState("");
+  const load = React.useCallback(() => { api<TeamData>("/api/admin/team").then(setData).catch((e) => setErr(e.message)); }, []);
   React.useEffect(() => { load(); }, [load]);
-  const run = async (id: string, fn: () => Promise<unknown>) => {
-    setBusy(id); setErr("");
-    try { await fn(); load(); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  const run = async (id: string, fn: () => Promise<unknown>, done = "") => {
+    setBusy(id); setErr(""); setOk("");
+    try { await fn(); if (done) setOk(done); load(); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
   };
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     run("add", async () => {
       await api("/api/admin/team", { method: "POST", body: JSON.stringify(form) });
       setCreated({ username: form.username.trim().toLowerCase(), password: form.password });
-      setForm({ username: "", name: "", password: genPassword(), level: "manager" });
+      setForm({ username: "", name: "", password: genPassword(), level: "manager", perms: [] });
     });
   };
-  const patch = (u: string, body: object) => run(u, () => api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify(body) }));
+  const patch = (u: string, body: object, done = "") => run(u, () => api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify(body) }), done);
   const resetPw = (u: string) => {
     const pw = genPassword();
     run(u, async () => { await api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify({ password: pw }) }); setCreated({ username: u, password: pw }); });
   };
   if (!data && !err) return <Loading />;
   const inp = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-ink/40";
+  const permLabel = (id: string) => data?.perms.find((p) => p.id === id)?.label ?? id;
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900">
-        أضف من يساعدك في الإدارة. <b>الملكية لك وحدك</b>: حسابك (المالك) ثابت من إعدادات الخادم ولا يقدر أحد يعدّله أو يحذفه، وإضافة الأعضاء وحذفهم وحذف العملاء لك فقط.
-        <br />• <b>مشرف</b>: يشوف كل شيء ويفعّل الطلبات ويجدد ويدير العملاء والتصاميم. • <b>مشاهد</b>: يشوف فقط بدون أي تعديل.
-        <br />تغيير الصلاحية أو كلمة المرور أو الإيقاف يُخرج العضو من جلسته فوراً.
+        <b>الملكية لك وحدك:</b> حسابك (المالك) ثابت من إعدادات الخادم ولا يقدر أحد يعدّله أو يحذفه. أي تغيير في دور العضو أو كلمة مروره أو إيقافه يُخرجه من جلسته فوراً.
       </div>
       {err && <Problem text={err} />}
+      {ok && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{ok}</div>}
       {created && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           أرسل للعضو بيانات الدخول (تظهر مرة واحدة فقط): رابط الدخول <b dir="ltr">{typeof window !== "undefined" ? `${location.origin}/login` : "/login"}</b> · اسم المستخدم <b dir="ltr" className="font-latin">{created.username}</b> · كلمة المرور <b dir="ltr" className="font-latin">{created.password}</b>
@@ -361,51 +403,73 @@ function TeamTab() {
           <button onClick={() => setCreated(null)} className="ms-1 rounded-lg px-2 py-0.5 text-xs">إخفاء</button>
         </div>
       )}
-      <form onSubmit={add} className="grid gap-3 rounded-2xl border border-line bg-white p-4 md:grid-cols-[1fr_1fr_1.2fr_auto_auto] md:items-end">
-        <label className="text-xs text-muted">اسم المستخدم (إنجليزي)<input required dir="ltr" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="sara" className={inp} /></label>
-        <label className="text-xs text-muted">الاسم<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="سارة" className={inp} /></label>
-        <label className="text-xs text-muted">كلمة المرور
-          <span className="flex gap-1"><input required minLength={8} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inp + " font-latin"} />
-            <button type="button" onClick={() => setForm({ ...form, password: genPassword() })} className="h-10 shrink-0 rounded-xl border border-line px-2 text-xs">توليد</button></span>
-        </label>
-        <label className="text-xs text-muted">الصلاحية
-          <select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value as Member["level"] })} className={inp}>
-            <option value="manager">مشرف</option><option value="viewer">مشاهد</option>
-          </select>
-        </label>
-        <button disabled={busy === "add"} className="h-10 rounded-xl bg-ink px-4 text-sm text-paper">{busy === "add" ? "…" : "إضافة عضو"}</button>
-      </form>
+
+      {data && (
+        <form onSubmit={add} className="space-y-4 rounded-2xl border border-line bg-white p-5">
+          <div>
+            <h3 className="text-sm font-semibold">إنشاء حساب لعضو في الفريق</h3>
+            <p className="mt-1 text-xs text-muted">اكتب بياناته واختر دوره وصلاحياته، وبعدها أرسل له بيانات الدخول.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-xs text-muted">الاسم<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="سارة — المبيعات" className={inp} /></label>
+            <label className="text-xs text-muted">اسم المستخدم (إنجليزي)<input required dir="ltr" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="sara" className={inp} /></label>
+            <label className="text-xs text-muted">كلمة المرور
+              <span className="flex gap-1"><input required minLength={8} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inp + " font-latin"} />
+                <button type="button" onClick={() => setForm({ ...form, password: genPassword() })} className="h-10 shrink-0 rounded-xl border border-line px-2 text-xs">توليد</button></span>
+            </label>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-semibold">الدور والصلاحيات</div>
+            <PermsEditor data={data} level={form.level} perms={form.perms} onChange={(level, perms) => setForm({ ...form, level, perms })} />
+          </div>
+          <button disabled={busy === "add" || (form.level === "custom" && !form.perms.length && false)} className="h-10 rounded-xl bg-ink px-5 text-sm text-paper">{busy === "add" ? "…" : "إنشاء الحساب"}</button>
+        </form>
+      )}
+
       <div className="overflow-x-auto rounded-2xl border border-line bg-white">
         <table className="w-full text-sm">
           <thead className="text-xs text-muted"><tr className="border-b border-line text-right">
-            <th className="p-3 font-medium">العضو</th><th className="p-3 font-medium">الصلاحية</th><th className="p-3 font-medium">الحالة</th><th className="p-3 font-medium">آخر دخول</th><th className="p-3" />
+            <th className="p-3 font-medium">العضو</th><th className="p-3 font-medium">الدور والصلاحيات</th><th className="p-3 font-medium">الحالة</th><th className="p-3 font-medium">آخر دخول</th><th className="p-3" />
           </tr></thead>
           <tbody>
             <tr className="border-b border-line bg-amber-50/40">
               <td className="p-3 font-medium"><span dir="ltr" className="font-latin">{data?.owner}</span> <span className="text-xs text-muted">(أنت)</span></td>
-              <td className="p-3"><span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">المالك</span></td>
+              <td className="p-3"><span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">المالك · كل الصلاحيات</span></td>
               <td className="p-3 text-xs text-muted">ثابت — يُدار من إعدادات الخادم</td><td className="p-3" /><td className="p-3" />
             </tr>
             {data?.members.map((m) => (
-              <tr key={m.username} className="border-b border-line last:border-0">
-                <td className="p-3"><div className="font-medium">{m.name}</div><div dir="ltr" className="text-right font-latin text-xs text-muted">{m.username}</div></td>
-                <td className="p-3">
-                  <select disabled={busy === m.username} value={m.level} onChange={(e) => patch(m.username, { level: e.target.value })} className="rounded-lg border border-line bg-white px-2 py-1 text-xs">
-                    <option value="manager">مشرف</option><option value="viewer">مشاهد</option>
-                  </select>
-                </td>
-                <td className="p-3 text-xs">{m.disabled ? <span className="font-semibold text-red-600">موقوف</span> : <span className="text-emerald-700">فعّال</span>}</td>
-                <td className="p-3 text-xs text-muted">{m.lastLoginAt ? date(m.lastLoginAt) : "لم يدخل بعد"}</td>
-                <td className="p-3 text-left">
-                  <span className="inline-flex flex-wrap justify-end gap-1">
-                    <button disabled={busy === m.username} onClick={() => resetPw(m.username)} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">كلمة مرور جديدة</button>
-                    <button disabled={busy === m.username} onClick={() => patch(m.username, { disabled: !m.disabled })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{m.disabled ? "تفعيل" : "إيقاف"}</button>
-                    {confirm === m.username
-                      ? <button onClick={() => { setConfirm(null); run(m.username, () => api(`/api/admin/team/${encodeURIComponent(m.username)}`, { method: "DELETE" })); }} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
-                      : <button onClick={() => setConfirm(m.username)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
-                  </span>
-                </td>
-              </tr>
+              <React.Fragment key={m.username}>
+                <tr className="border-b border-line last:border-0">
+                  <td className="p-3"><div className="font-medium">{m.name}</div><div dir="ltr" className="text-right font-latin text-xs text-muted">{m.username}</div></td>
+                  <td className="p-3">
+                    <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs font-semibold">{ROLE_INFO[m.level]}</span>
+                    <div className="mt-1 flex flex-wrap gap-1">{m.effective.length ? m.effective.map((p) => <span key={p} className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-800">{permLabel(p)}</span>) : <span className="text-[11px] text-muted">مشاهدة فقط</span>}</div>
+                  </td>
+                  <td className="p-3 text-xs">{m.disabled ? <span className="font-semibold text-red-600">موقوف</span> : <span className="text-emerald-700">فعّال</span>}</td>
+                  <td className="p-3 text-xs text-muted">{m.lastLoginAt ? date(m.lastLoginAt) : "لم يدخل بعد"}</td>
+                  <td className="p-3 text-left">
+                    <span className="inline-flex flex-wrap justify-end gap-1">
+                      <button disabled={busy === m.username} onClick={() => setEdit(edit?.u === m.username ? null : { u: m.username, level: m.level, perms: m.effective })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{edit?.u === m.username ? "إغلاق" : "الصلاحيات"}</button>
+                      <button disabled={busy === m.username} onClick={() => resetPw(m.username)} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">كلمة مرور جديدة</button>
+                      <button disabled={busy === m.username} onClick={() => patch(m.username, { disabled: !m.disabled })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{m.disabled ? "تفعيل" : "إيقاف"}</button>
+                      {confirm === m.username
+                        ? <button onClick={() => { setConfirm(null); run(m.username, () => api(`/api/admin/team/${encodeURIComponent(m.username)}`, { method: "DELETE" })); }} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
+                        : <button onClick={() => setConfirm(m.username)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
+                    </span>
+                  </td>
+                </tr>
+                {edit?.u === m.username && data && (
+                  <tr className="border-b border-line bg-paper/60">
+                    <td colSpan={5} className="p-4">
+                      <PermsEditor data={data} level={edit.level} perms={edit.perms} onChange={(level, perms) => setEdit({ ...edit, level, perms })} />
+                      <div className="mt-3 flex gap-2">
+                        <button disabled={busy === m.username} onClick={() => { patch(m.username, { level: edit.level, perms: edit.perms }, `تم حفظ صلاحيات ${m.name}.`); setEdit(null); }} className="h-9 rounded-xl bg-ink px-4 text-sm text-paper">حفظ الصلاحيات</button>
+                        <button onClick={() => setEdit(null)} className="h-9 rounded-xl border border-line px-4 text-sm">إلغاء</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -498,6 +562,116 @@ function FinanceTab() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+type CouponRow = { code: string; type: "percent" | "fixed"; value: number; plans: PlanKind[]; maxUses: number | null; uses: number; expiresAt: number | null; active: boolean; note?: string; createdAt: number };
+const randomCode = () => "SAVE" + Array.from(crypto.getRandomValues(new Uint8Array(3)), (x) => "ABCDEFGHJKMNPQRSTUVWXYZ23456789"[x % 31]).join("");
+function PricingTab({ onSaved }: { onSaved: (p: { once: number; monthly: number }) => void }) {
+  const [pr, setPr] = React.useState<{ current: { once: number; monthly: number }; defaults: { once: number; monthly: number }; override: { at?: number; by?: string } | null } | null>(null);
+  const [form, setForm] = React.useState({ once: "", monthly: "" });
+  const [coupons, setCoupons] = React.useState<CouponRow[] | null>(null);
+  const [cf, setCf] = React.useState({ code: randomCode(), type: "percent" as "percent" | "fixed", value: "10", once: true, monthly: true, maxUses: "", expires: "", note: "" });
+  const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [confirm, setConfirm] = React.useState<string | null>(null);
+  const load = React.useCallback(() => {
+    api<NonNullable<typeof pr>>("/api/admin/pricing").then((d) => { setPr(d); setForm({ once: String(d.current.once), monthly: String(d.current.monthly) }); }).catch((e) => setMsg({ ok: false, text: e.message }));
+    api<{ coupons: CouponRow[] }>("/api/admin/coupons").then((d) => setCoupons(d.coupons)).catch((e) => setMsg({ ok: false, text: e.message }));
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+  const run = async (id: string, fn: () => Promise<unknown>, ok: string) => {
+    setBusy(id); setMsg(null);
+    try { await fn(); setMsg({ ok: true, text: ok }); load(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(null); }
+  };
+  const savePrices = (reset = false) => run("prices", async () => {
+    const d = await api<NonNullable<typeof pr>>("/api/admin/pricing", { method: "PUT", body: JSON.stringify(reset ? { reset: true } : { once: Number(form.once), monthly: Number(form.monthly) }) });
+    onSaved(d.current);
+  }, reset ? "رجعت الأسعار للافتراضي." : "تم حفظ الأسعار، وتظهر للعملاء خلال ثواني.");
+  const addCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    const plans = [cf.once && "once", cf.monthly && "monthly"].filter(Boolean);
+    run("coupon", async () => {
+      await api("/api/admin/coupons", { method: "POST", body: JSON.stringify({ code: cf.code, type: cf.type, value: Number(cf.value), plans, maxUses: cf.maxUses ? Number(cf.maxUses) : null, expiresAt: cf.expires ? new Date(cf.expires + "T23:59:59+03:00").getTime() : null, note: cf.note }) });
+      setCf({ ...cf, code: randomCode(), note: "" });
+    }, `تم إنشاء الكود ${cf.code.toUpperCase()}.`);
+  };
+  const inp = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-ink/40";
+  const after = (c: CouponRow, base: number) => Math.max(0, Math.round((base - (c.type === "percent" ? (base * c.value) / 100 : c.value)) * 100) / 100);
+  if (!pr) return <Loading />;
+  const discountLabel = (c: Pick<CouponRow, "type" | "value">) => (c.type === "percent" ? `${c.value}%` : `${c.value} ر.س`);
+  return (
+    <div className="space-y-6">
+      {msg && <div className={`rounded-xl px-4 py-3 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>{msg.text}</div>}
+      <section className="rounded-2xl border border-line bg-white p-5">
+        <h3 className="text-sm font-semibold">أسعار الباقات</h3>
+        <p className="mt-1 text-xs text-muted">السعر الجديد يطبَّق على الطلبات الجديدة، وما يغيّر المدفوعات السابقة. الافتراضي من إعدادات الخادم: مرة واحدة {pr.defaults.once} ر.س · شهري {pr.defaults.monthly} ر.س.{pr.override?.at ? ` آخر تعديل ${date(pr.override.at)}${pr.override.by ? ` بواسطة ${pr.override.by}` : ""}.` : ""}</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+          <label className="text-xs text-muted">سعر المرة الواحدة (ر.س)<input type="number" min={1} dir="ltr" value={form.once} onChange={(e) => setForm({ ...form, once: e.target.value })} className={inp + " font-latin"} /></label>
+          <label className="text-xs text-muted">سعر الاشتراك الشهري (ر.س)<input type="number" min={1} dir="ltr" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} className={inp + " font-latin"} /></label>
+          <button disabled={busy === "prices"} onClick={() => savePrices()} className="h-10 rounded-xl bg-ink px-4 text-sm text-paper">{busy === "prices" ? "…" : "حفظ الأسعار"}</button>
+          <button disabled={busy === "prices" || !pr.override} onClick={() => savePrices(true)} className="h-10 rounded-xl border border-line px-4 text-sm disabled:opacity-40">رجوع للافتراضي</button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-line bg-white p-5">
+        <h3 className="text-sm font-semibold">أكواد الخصم</h3>
+        <p className="mt-1 text-xs text-muted">العميل يكتب الكود في نافذة الدفع ويشوف السعر بعد الخصم، ويوصلك طلبه بالسعر المخفّض. الاستخدام يُحسب لما تفعّل الطلب. في الشهري الخصم على أول شهر.</p>
+        <form onSubmit={addCoupon} className="mt-4 grid gap-3 md:grid-cols-4">
+          <label className="text-xs text-muted">الكود
+            <span className="flex gap-1"><input required dir="ltr" value={cf.code} onChange={(e) => setCf({ ...cf, code: e.target.value.toUpperCase() })} className={inp + " font-latin uppercase"} />
+              <button type="button" onClick={() => setCf({ ...cf, code: randomCode() })} className="h-10 shrink-0 rounded-xl border border-line px-2 text-xs">توليد</button></span>
+          </label>
+          <label className="text-xs text-muted">نوع الخصم
+            <select value={cf.type} onChange={(e) => setCf({ ...cf, type: e.target.value as "percent" | "fixed" })} className={inp}><option value="percent">نسبة %</option><option value="fixed">مبلغ ثابت (ر.س)</option></select>
+          </label>
+          <label className="text-xs text-muted">{cf.type === "percent" ? "النسبة (%)" : "المبلغ (ر.س)"}<input required type="number" min={1} max={cf.type === "percent" ? 100 : undefined} dir="ltr" value={cf.value} onChange={(e) => setCf({ ...cf, value: e.target.value })} className={inp + " font-latin"} /></label>
+          <div className="text-xs text-muted">يشمل
+            <div className="mt-2 flex gap-3 text-sm text-ink">
+              <label className="flex items-center gap-1"><input type="checkbox" checked={cf.once} onChange={(e) => setCf({ ...cf, once: e.target.checked })} /> مرة واحدة</label>
+              <label className="flex items-center gap-1"><input type="checkbox" checked={cf.monthly} onChange={(e) => setCf({ ...cf, monthly: e.target.checked })} /> شهري</label>
+            </div>
+          </div>
+          <label className="text-xs text-muted">حد الاستخدام (اختياري)<input type="number" min={1} dir="ltr" value={cf.maxUses} onChange={(e) => setCf({ ...cf, maxUses: e.target.value })} placeholder="بدون حد" className={inp + " font-latin"} /></label>
+          <label className="text-xs text-muted">ينتهي في (اختياري)<input type="date" dir="ltr" value={cf.expires} onChange={(e) => setCf({ ...cf, expires: e.target.value })} className={inp} /></label>
+          <label className="text-xs text-muted">ملاحظة<input value={cf.note} onChange={(e) => setCf({ ...cf, note: e.target.value })} placeholder="مثلاً: حملة رمضان" className={inp} /></label>
+          <button disabled={busy === "coupon" || (!cf.once && !cf.monthly)} className="h-10 self-end rounded-xl bg-ink px-4 text-sm text-paper">{busy === "coupon" ? "…" : "إنشاء الكود"}</button>
+        </form>
+        <p className="mt-2 text-xs text-muted">معاينة: مرة واحدة {pr.current.once} ← <b>{after({ type: cf.type, value: Number(cf.value) || 0 } as CouponRow, pr.current.once)}</b> ر.س · شهري {pr.current.monthly} ← <b>{after({ type: cf.type, value: Number(cf.value) || 0 } as CouponRow, pr.current.monthly)}</b> ر.س</p>
+        <div className="mt-4 overflow-x-auto">
+          {!coupons ? <Loading /> : !coupons.length ? <Empty text="ما فيه أكواد خصم بعد." /> : (
+            <table className="w-full text-sm">
+              <thead className="text-xs text-muted"><tr className="border-b border-line text-right">
+                <th className="p-2 font-medium">الكود</th><th className="p-2 font-medium">الخصم</th><th className="p-2 font-medium">السعر بعده</th><th className="p-2 font-medium">الاستخدام</th><th className="p-2 font-medium">ينتهي</th><th className="p-2 font-medium">الحالة</th><th className="p-2" />
+              </tr></thead>
+              <tbody>
+                {coupons.map((c) => {
+                  const expired = !!c.expiresAt && c.expiresAt < Date.now(), full = !!c.maxUses && c.uses >= c.maxUses;
+                  return (
+                    <tr key={c.code} className="border-b border-line last:border-0">
+                      <td className="p-2"><b dir="ltr" className="font-latin">{c.code}</b>{c.note && <div className="text-[11px] text-muted">{c.note}</div>}</td>
+                      <td className="p-2 text-xs">{discountLabel(c)} · {c.plans.length === 2 ? "الباقتين" : c.plans[0] === "once" ? "مرة واحدة" : "شهري"}</td>
+                      <td className="p-2 font-latin text-xs">{c.plans.map((k) => `${k === "once" ? "مرة" : "شهري"} ${after(c, pr.current[k])}`).join(" · ")}</td>
+                      <td className="p-2 font-latin text-xs">{c.uses}{c.maxUses ? ` / ${c.maxUses}` : ""}</td>
+                      <td className="p-2 text-xs">{c.expiresAt ? date(c.expiresAt) : "—"}</td>
+                      <td className="p-2 text-xs">{!c.active ? <span className="text-muted">موقوف</span> : expired ? <span className="text-red-600">منتهي</span> : full ? <span className="text-amber-700">اكتمل</span> : <span className="font-semibold text-emerald-700">فعّال</span>}</td>
+                      <td className="p-2 text-left">
+                        <span className="inline-flex gap-1">
+                          <button disabled={busy === c.code} onClick={() => run(c.code, () => api(`/api/admin/coupons/${encodeURIComponent(c.code)}`, { method: "PATCH", body: JSON.stringify({ active: !c.active }) }), c.active ? `أوقفت ${c.code}.` : `فعّلت ${c.code}.`)} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{c.active ? "إيقاف" : "تفعيل"}</button>
+                          {confirm === c.code
+                            ? <button onClick={() => { setConfirm(null); run(c.code, () => api(`/api/admin/coupons/${encodeURIComponent(c.code)}`, { method: "DELETE" }), `حذفت ${c.code}.`); }} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white">تأكيد الحذف</button>
+                            : <button onClick={() => setConfirm(c.code)} className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50">حذف</button>}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -603,9 +777,13 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
   const tabs = [
     { id: "overview", label: "نظرة عامة" }, { id: "payments", label: "الطلبات والمدفوعات" }, { id: "customers", label: "العملاء" }, { id: "designs", label: "التصاميم" },
     ...extraTabs.map(({ id, label }) => ({ id, label })), { id: "usage", label: "الاستخدام والتكاليف" },
-    ...(me.owner ? [{ id: "finance", label: "المالية" }, { id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
+    ...(me.owner || me.perms?.includes("pricing") ? [{ id: "pricing", label: "الأسعار والخصومات" }] : []),
+    ...(me.owner || me.perms?.includes("finance") ? [{ id: "finance", label: "المالية" }] : []),
+    ...(me.owner ? [ { id: "team", label: "الفريق" }, { id: "settings", label: "الإعدادات" }] : []),
   ];
   const [tab, setTab] = React.useState("overview");
+  const [prices, setPrices] = React.useState({ once: DEFAULT_PLANS.once.price, monthly: DEFAULT_PLANS.monthly.price });
+  React.useEffect(() => { if (kvReady) api<{ current: { once: number; monthly: number } }>("/api/admin/pricing").then((d) => setPrices(d.current)).catch(() => {}); }, [kvReady]);
   const [ver, setVer] = React.useState(0);
   const [examples, setExamples] = React.useState<boolean | null>(null);
   const [exBusy, setExBusy] = React.useState(false);
@@ -620,15 +798,16 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; };
   return (
     <MeCtx.Provider value={me}>
+    <PricesCtx.Provider value={prices}>
     <main className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-xs text-muted">{brand}</div>
           <h1 className="font-display text-2xl font-bold">لوحة التحكم</h1>
-          {me.username && <div className="mt-1 text-xs text-muted">دخلت باسم <b dir="ltr" className="font-latin text-ink">{me.username}</b> · <span className={me.owner ? "text-amber-700" : ""}>{LEVELS[me.level]}</span>{me.level === "viewer" && " (مشاهدة فقط)"}</div>}
+          {me.username && <div className="mt-1 text-xs text-muted">دخلت باسم <b dir="ltr" className="font-latin text-ink">{me.username}</b> · <span className={me.owner ? "text-amber-700" : ""}>{LEVELS[me.level]}</span>{me.level === "viewer" && " (مشاهدة فقط)"}{!me.owner && me.level !== "viewer" && me.perms?.length ? ` · ${me.perms.length} صلاحيات` : ""}</div>}
         </div>
         <div className="flex gap-2">
-          {kvReady && examples !== null && me.level !== "viewer" && (
+          {kvReady && examples !== null && (me.owner || me.perms?.includes("examples")) && (
             <button onClick={toggleExamples} disabled={exBusy} className={`rounded-xl px-4 py-2 text-sm ${examples ? "border border-red-200 bg-red-50 text-red-700" : "border border-sky-200 bg-sky-50 text-sky-800"}`}>
               {exBusy ? "…" : examples ? "حذف البيانات التجريبية" : "إضافة بيانات تجريبية"}
             </button>
@@ -655,10 +834,12 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
       {tab === "designs" && (kvReady ? <DesignsTab key={ver} /> : <Empty text="تظهر التصاميم بعد ربط قاعدة البيانات." />)}
       {tab === "usage" && (kvReady ? <UsageTab key={ver} /> : <Empty text="يظهر الاستخدام بعد ربط قاعدة البيانات." />)}
       {tab === "settings" && me.owner && <SettingsTab rows={settings} />}
-      {tab === "finance" && me.owner && (kvReady ? <FinanceTab key={ver} /> : <Empty text="تظهر المالية بعد ربط قاعدة البيانات." />)}
+      {tab === "pricing" && (me.owner || me.perms?.includes("pricing")) && (kvReady ? <PricingTab onSaved={(p) => { setPrices(p); setVer((v) => v + 1); }} /> : <Empty text="تعديل الأسعار يحتاج ربط قاعدة البيانات." />)}
+      {tab === "finance" && (me.owner || me.perms?.includes("finance")) && (kvReady ? <FinanceTab key={ver} /> : <Empty text="تظهر المالية بعد ربط قاعدة البيانات." />)}
       {tab === "team" && me.owner && (kvReady && !demoStore ? <TeamTab /> : <Empty text="إضافة أعضاء الفريق تحتاج ربط قاعدة البيانات (Upstash Redis)." />)}
       {extraTabs.map((t) => tab === t.id && <div key={t.id}>{t.node}</div>)}
     </main>
+    </PricesCtx.Provider>
     </MeCtx.Provider>
   );
 }

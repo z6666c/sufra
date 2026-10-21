@@ -6,7 +6,7 @@ import { deleteMenu, listMenus } from "@/lib/storage";
 export const runtime = "nodejs";
 
 async function guard(req: Request) {
-  const err = await checkStaff(await sessionFromRequest(req), req.method === "GET" ? "read" : "write");
+  const err = await checkStaff(await sessionFromRequest(req), req.method === "GET" ? "read" : "menus");
   return err ? NextResponse.json({ error: err }, { status: 403 }) : null;
 }
 

@@ -1,5 +1,5 @@
 import { isPaid, listAllDesigns, listCustomers, statsSeries } from "@/lib/customers";
-import { PLANS } from "@/lib/plans";
+import { getPlans } from "@/lib/pricing";
 import { json, requireAdmin } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -14,6 +14,7 @@ const COST = {
 };
 
 export async function GET(req: Request) {
+  const PLANS = await getPlans();
   const g = await requireAdmin(req);
   if (g instanceof Response) return g;
   const metrics = ["signup", "login", "design_new", "design_save", "ai_logos", "ai_logo_image", "ai_identity", "name_check", "menu_ai", "dish_photo", "publish", "otp_email", "otp_whatsapp", "otp_sms", "payment", "revenue", "payment_request"];

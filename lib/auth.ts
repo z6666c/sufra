@@ -1,7 +1,7 @@
 // الحسابات والجلسات: حساب إدارة + حساب ديمو (بدون قاعدة بيانات)
 // - بيانات الدخول من متغيرات البيئة، والجلسة كعكة موقّعة HMAC-SHA256 (Web Crypto: تعمل في proxy والخادم)
 export type Role = "admin" | "demo" | "customer";
-export type TeamLevel = "manager" | "viewer";
+export type TeamLevel = "manager" | "viewer" | "custom";
 /** m = عضو فريق (غير المالك)، v = نسخة صلاحيته، lv = مستواه */
 export interface Session { u: string; r: Role; exp: number; m?: 1; v?: number; lv?: TeamLevel }
 

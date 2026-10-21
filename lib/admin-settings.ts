@@ -13,7 +13,7 @@ export function settingsRows() {
     { label: "حسابات الإدارة والديمو", value: accounts().map((a) => `${a.username} (${a.role === "admin" ? "إدارة" : "ديمو"})`).join("، ") || "لا يوجد" },
     { label: "الديمو العام بدون تسجيل", value: publicDemo() ? "مفعّل" : "متوقف", ok: true, hint: "PUBLIC_DEMO" },
     { label: "قاعدة البيانات (العملاء والتصاميم)", value: kv === "redis" ? "Upstash Redis" : kv === "file" ? "ملف محلي (تطوير)" : "غير مربوطة", ok: kv === "redis", hint: "اربط Upstash من Vercel ← Storage" },
-    { label: "الباقات", value: `مرة واحدة ${PLANS.once.price} ر.س · شهري ${PLANS.monthly.price} ر.س`, hint: "NEXT_PUBLIC_PRICE_ONCE و NEXT_PUBLIC_PRICE_MONTHLY" },
+    { label: "الباقات (الافتراضي من البيئة)", value: `مرة واحدة ${PLANS.once.price} ر.س · شهري ${PLANS.monthly.price} ر.س`, hint: "تعدّل الأسعار الفعلية من تبويب «الأسعار والخصومات»" },
     { label: "حفظ المسودة غير المدفوعة", value: `${DRAFT_DAYS} أيام لإكمال الشراء (لا توجد فترة مجانية)`, hint: "DRAFT_DAYS" },
     { label: "طريقة الدفع", value: process.env.NEXT_PUBLIC_PAYMENT_NOTE ? "تعليمات تحويل يدوي مضبوطة" : "يدوي — يطلب العميل التفعيل وتفعّله من «الطلبات والمدفوعات»", ok: !!process.env.NEXT_PUBLIC_PAYMENT_NOTE, hint: "NEXT_PUBLIC_PAYMENT_NOTE و NEXT_PUBLIC_WHATSAPP — بوابة الدفع لاحقاً" },
     { label: "التسجيل بالبريد", value: emailProvider() ? "Resend" : devEcho() ? "وضع تجربة (الرمز يظهر على الشاشة)" : "غير مفعّل", ok: !!emailProvider(), hint: "RESEND_API_KEY و MAIL_FROM" },

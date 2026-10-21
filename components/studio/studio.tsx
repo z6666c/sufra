@@ -1,8 +1,7 @@
 "use client";
-import { ensureAccount, useAccount, useEntitled } from "../account/account-client";
+import { ensureAccount, useAccount, useEntitled, usePlans } from "../account/account-client";
 import { Watermark, PreviewBadge } from "../account/watermark";
 import { paidGate } from "./paid-gate";
-import { PLANS } from "@/lib/plans";
 import * as React from "react";
 import { ArrowRight, Globe, Megaphone, LayoutList, Palette, Printer, QrCode, Settings2, SlidersHorizontal, Store, FileArchive, Save } from "lucide-react";
 import { useMenu, type EditorTab, type OutputTab } from "@/store/menu-store";
@@ -39,6 +38,7 @@ export function Studio() {
   const { me } = useAccount();
   const customer = me?.role === "customer";
   const paid = useEntitled(saved?.id);
+  const PLANS = usePlans();
   const [saveMsg, setSaveMsg] = React.useState("");
   // حفظ تلقائي بعد كل تعديل للعميل المسجّل
   React.useEffect(() => {

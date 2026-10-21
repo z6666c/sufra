@@ -6,11 +6,31 @@ import { kv, kvJson, kvAvailable } from "./kv";
 import { accounts } from "./auth";
 
 const APP = "sufra";
-export type TeamLevel = "manager" | "viewer";
+export type TeamLevel = "manager" | "viewer" | "custom";
+/** الصلاحيات التفصيلية — المشاهدة (نظرة عامة، الطلبات، العملاء، التصاميم، الاستخدام) متاحة لكل الفريق */
+export type Perm = "payments" | "customers" | "designs" | "examples" | "finance" | "pricing" | "menus";
+export const PERMS: { id: Perm; label: string; hint: string }[] = ([
+  { id: "payments", label: "تفعيل الطلبات والمدفوعات", hint: "تفعيل مرة واحدة أو شهري، وتجديد، وإلغاء التفعيل" },
+  { id: "customers", label: "إدارة العملاء", hint: "ملاحظات العملاء وتفعيل كل تصاميم العميل" },
+  { id: "designs", label: "حذف التصاميم", hint: "حذف تصميم أي عميل" },
+  { id: "menus", label: "حذف المنيوهات المنشورة", hint: "إيقاف رابط منيو منشور" },
+  { id: "finance", label: "مشاهدة المالية", hint: "الإيراد والتكاليف وصافي الربح" },
+  { id: "pricing", label: "الأسعار وأكواد الخصم", hint: "تعديل أسعار الباقات وإنشاء وإيقاف أكواد الخصم" },
+  { id: "examples", label: "البيانات التجريبية", hint: "إضافة وحذف الأمثلة" },
+] as { id: Perm; label: string; hint: string }[]).filter((p) => p.id !== "menus" || (APP as string) === "sufra");
+export const LEVEL_PERMS: Record<Exclude<TeamLevel, "custom">, Perm[]> = {
+  manager: ["payments", "customers", "designs", "menus", "examples"],
+  viewer: [],
+};
+const ALL_PERMS = (): Perm[] => PERMS.map((p) => p.id);
+export const cleanPerms = (x: unknown): Perm[] => (Array.isArray(x) ? x : []).filter((p): p is Perm => ALL_PERMS().includes(p as Perm));
+export const effectivePerms = (m: Pick<Member, "level" | "perms">): Perm[] => (m.level === "custom" ? cleanPerms(m.perms) : LEVEL_PERMS[m.level].filter((p) => ALL_PERMS().includes(p)));
 export interface Member {
   username: string;
   name: string;
   level: TeamLevel;
+  /** للصلاحيات المخصصة فقط */
+  perms?: Perm[];
   salt: string;
   hash: string;
   /** يتغير عند تغيير كلمة المرور أو الصلاحية أو الإيقاف ← يُخرج الجلسات القديمة */
@@ -21,10 +41,11 @@ export interface Member {
   lastLoginAt?: number;
 }
 export type MemberPublic = Omit<Member, "salt" | "hash">;
+const normLevel = (l: unknown): TeamLevel => (l === "viewer" || l === "custom" ? l : "manager");
 
 const key = (u: string) => `${APP}:team:${u}`;
 const SET = `${APP}:team`;
-export const LEVEL_LABEL: Record<TeamLevel, string> = { manager: "مشرف", viewer: "مشاهد" };
+export const LEVEL_LABEL: Record<TeamLevel, string> = { manager: "مشرف", viewer: "مشاهد", custom: "مخصص" };
 export const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
 
 const enc = new TextEncoder();
@@ -38,7 +59,7 @@ const safeEq = (a: string, b: string) => {
   for (let i = 0; i < Math.min(a.length, b.length); i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return d === 0;
 };
-export const toPublic = ({ salt: _s, hash: _h, ...m }: Member): MemberPublic => m;
+export const toPublic = ({ salt: _s, hash: _h, ...m }: Member): MemberPublic & { effective: Perm[] } => ({ ...m, effective: effectivePerms(m) });
 
 export async function getMember(username: string): Promise<Member | null> {
   if (!kvAvailable()) return null;
@@ -55,7 +76,7 @@ export function validatePassword(p: string) {
   return typeof p === "string" && p.length >= 8 && p.length <= 128 ? null : "كلمة المرور 8 أحرف على الأقل";
 }
 
-export async function addMember(input: { username: string; name?: string; password: string; level: TeamLevel }, by: string) {
+export async function addMember(input: { username: string; name?: string; password: string; level: TeamLevel; perms?: unknown }, by: string) {
   const username = String(input.username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) throw new Error("اسم المستخدم: 3 إلى 32 حرفاً إنجليزياً أو أرقاماً (ويُسمح بـ . _ -)");
   if (accounts().some((a) => a.username === username)) throw new Error("هذا الاسم محجوز لحساب المالك أو الديمو");
@@ -64,7 +85,7 @@ export async function addMember(input: { username: string; name?: string; passwo
   if ((await kv<string[]>("SMEMBERS", SET)).length >= 20) throw new Error("الحد الأقصى 20 عضواً");
   const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
   const m: Member = {
-    username, name: String(input.name ?? "").trim().slice(0, 60) || username, level: input.level === "viewer" ? "viewer" : "manager",
+    username, name: String(input.name ?? "").trim().slice(0, 60) || username, level: normLevel(input.level), ...(normLevel(input.level) === "custom" ? { perms: cleanPerms(input.perms) } : {}),
     salt, hash: await pbkdf2(input.password, salt), v: 1, createdAt: Date.now(), createdBy: by,
   };
   await kvJson.set(key(username), m);
@@ -72,13 +93,15 @@ export async function addMember(input: { username: string; name?: string; passwo
   return toPublic(m);
 }
 
-export async function updateMember(username: string, p: { name?: string; level?: TeamLevel; password?: string; disabled?: boolean }) {
+export async function updateMember(username: string, p: { name?: string; level?: TeamLevel; perms?: unknown; password?: string; disabled?: boolean }) {
   const m = await getMember(username);
   if (!m) return null;
   const next: Member = { ...m };
   let bump = false;
   if (typeof p.name === "string") next.name = p.name.trim().slice(0, 60) || m.username;
-  if (p.level && p.level !== m.level) { next.level = p.level === "viewer" ? "viewer" : "manager"; bump = true; }
+  if (p.level && p.level !== m.level) { next.level = normLevel(p.level); bump = true; }
+  if (next.level === "custom" && p.perms !== undefined) next.perms = cleanPerms(p.perms);
+  if (next.level !== "custom") delete next.perms;
   if (typeof p.disabled === "boolean" && p.disabled !== !!m.disabled) { next.disabled = p.disabled; bump = true; }
   if (p.password !== undefined) {
     const pe = validatePassword(p.password); if (pe) throw new Error(pe);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDesign, isPaid, stat } from "@/lib/customers";
 import { kvAvailable } from "@/lib/kv";
-import { PLANS } from "@/lib/plans";
+import { getPlans } from "@/lib/pricing";
 import { sessionFromRequest } from "@/lib/auth";
 import type { MenuDoc } from "@/lib/types";
 import { saveMenu } from "@/lib/storage";
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
   // النشر للعميل يتطلب أن يكون منيوه المحفوظ مدفوعاً (الإدارة مستثناة)
   if (session.r === "customer" && kvAvailable()) {
     const d = body.designId ? await getDesign(body.designId, session.u) : null;
+    const PLANS = await getPlans();
     if (!d || !isPaid(d)) return NextResponse.json({ error: `النشر يُفتح بعد الدفع (${PLANS.monthly.price} ${PLANS.monthly.currency} شهرياً أو ${PLANS.once.price} مرة واحدة)`, code: "PAYMENT_REQUIRED" }, { status: 402 });
   }
   try {

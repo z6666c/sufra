@@ -1,12 +1,13 @@
 "use client";
 // حالة حساب العميل في المتصفح + فتح نافذة التسجيل عند الحاجة (قبل التحميل أو النشر)
 import * as React from "react";
+import { withPrices } from "@/lib/plans";
 
 export interface CustomerInfo { id: string; email?: string; phone?: string; name?: string; status: "trial" | "paid"; trialEndsAt: number; createdAt: number }
 export interface DesignMeta {
   id: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; size: number;
   paid?: { plan: "once" | "monthly"; at: number; amount: number; until?: number | null } | null;
-  paymentRequestedAt?: number | null; requestedPlan?: "once" | "monthly" | null;
+  paymentRequestedAt?: number | null; requestedPlan?: "once" | "monthly" | null; requestedCoupon?: { code: string; plan: "once" | "monthly"; base: number; price: number } | null;
 }
 export const designPaid = (d?: DesignMeta | null) => !!d?.paid && (!d.paid.until || d.paid.until > Date.now());
 export interface Me {
@@ -15,6 +16,8 @@ export interface Me {
   customer?: CustomerInfo;
   designs?: DesignMeta[];
   signup?: { available: boolean; email: boolean; phone: boolean; trialDays: number; draftDays?: number; store: string };
+  /** الأسعار الحالية من لوحة التحكم */
+  prices?: { once: number; monthly: number };
 }
 
 const PREVIEW = process.env.NEXT_PUBLIC_SUFRA_DEMO === "1";
@@ -114,11 +117,25 @@ export async function ensurePaid(getDesignId: () => Promise<string | undefined>,
 export const openPaywall = (designId: string, reason?: string) => emit({ paywall: { open: true, designId, reason } });
 export const closePaywall = () => emit({ paywall: { open: false } });
 
-export async function requestActivation(designId: string, plan: "once" | "monthly") {
-  const r = await fetch(`/api/account/designs/${encodeURIComponent(designId)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan }) });
+export async function requestActivation(designId: string, plan: "once" | "monthly", coupon?: string) {
+  const r = await fetch(`/api/account/designs/${encodeURIComponent(designId)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan, ...(coupon ? { coupon } : {}) }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error ?? "تعذر إرسال الطلب");
   await refreshAccount();
+}
+
+/** يتحقق من كود الخصم ويعيد السعر بعد الخصم */
+export async function quoteCoupon(code: string, plan: "once" | "monthly"): Promise<{ code: string; label: string; base: number; price: number }> {
+  const r = await fetch("/api/account/coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, plan }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? "تعذر التحقق من الكود");
+  return d;
+}
+
+/** الباقات بأسعار لوحة التحكم (أو أسعار البيئة إن لم تُعدّل) */
+export function usePlans() {
+  const s = useAccount();
+  return React.useMemo(() => withPrices(s.me?.prices), [s.me?.prices]);
 }
 
 /** حالة الدفع للتصميم الحالي (للعلامة المائية) */

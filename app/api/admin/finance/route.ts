@@ -1,13 +1,14 @@
 import { isPaid, listAllDesigns, statsSeries } from "@/lib/customers";
 import { FIN_METRICS, computeFinance } from "@/lib/finance";
-import { PLANS } from "@/lib/plans";
+import { getPlans } from "@/lib/pricing";
 import { json, requireAdmin } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 
 /** المالية الفعلية لهذا التطبيق وحده — للمالك فقط */
 export async function GET(req: Request) {
-  const g = await requireAdmin(req, "owner");
+  const PLANS = await getPlans();
+  const g = await requireAdmin(req, "finance");
   if (g instanceof Response) return g;
   const days = [30, 90, 365].includes(Number(new URL(req.url).searchParams.get("days"))) ? Number(new URL(req.url).searchParams.get("days")) : 30;
   const [s, designs] = await Promise.all([statsSeries(FIN_METRICS, days), listAllDesigns(2000)]);

@@ -12,7 +12,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
   try {
     const m = await updateMember((await params).id, {
       name: typeof b.name === "string" ? b.name : undefined,
-      level: b.level === "viewer" || b.level === "manager" ? b.level : undefined,
+      level: b.level === "viewer" || b.level === "manager" || b.level === "custom" ? b.level : undefined,
+      perms: b.perms,
       password: typeof b.password === "string" ? b.password : undefined,
       disabled: typeof b.disabled === "boolean" ? b.disabled : undefined,
     });

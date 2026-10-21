@@ -23,3 +23,13 @@ export const PLANS: Record<PlanKind, Plan> = {
 };
 export const PREVIEW_NOTE = "المعاينة مجانية بعلامة مائية. النشر والتحميل يُفتحان بعد الدفع.";
 export const PLAN = PLANS.once;
+
+/** الأسعار المعدّلة من لوحة التحكم تتقدم على أسعار البيئة */
+export type PriceSet = Partial<Record<PlanKind, number>>;
+export function withPrices(p?: PriceSet | null): Record<PlanKind, Plan> {
+  const ok = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  return {
+    once: { ...PLANS.once, price: ok(p?.once) ? p!.once! : PLANS.once.price },
+    monthly: { ...PLANS.monthly, price: ok(p?.monthly) ? p!.monthly! : PLANS.monthly.price },
+  };
+}

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { kv, kvJson, kvPipeline } from "./kv";
 
 export const DESIGN_KIND = "menu";
+export const KV_PREFIX = "sufra";
 const APP = "sufra";
 /** مدة حفظ المسودة غير المدفوعة (لإكمال الشراء) — لا توجد فترة مجانية */
 export const DRAFT_DAYS = Number(process.env.DRAFT_DAYS || 7);
@@ -24,13 +25,16 @@ export interface Customer {
   status: CustomerStatus; createdAt: number; lastLoginAt: number; trialEndsAt: number; note?: string; example?: boolean;
 }
 export type PlanKind = "once" | "monthly";
-export interface DesignPayment { at: number; amount: number; plan: PlanKind; until?: number | null; by?: string; ref?: string }
+export interface DesignPayment { at: number; amount: number; plan: PlanKind; until?: number | null; by?: string; ref?: string; coupon?: string }
+/** كود خصم طلبه العميل مع طلب التفعيل: السعر قبل وبعد الخصم */
+export interface RequestedCoupon { code: string; plan: PlanKind; base: number; price: number }
 export interface Design<T = unknown> {
   id: string; customerId: string; title: string; kind: string; createdAt: number; updatedAt: number; expiresAt: number | null; data: T; size: number;
   /** الدفع يفتح التحميل (والنشر في سُفرة) ويجعل التصميم دائماً */
   paid?: DesignPayment | null;
   paymentRequestedAt?: number | null;
   requestedPlan?: PlanKind | null;
+  requestedCoupon?: RequestedCoupon | null;
   example?: boolean;
 }
 export const isPaid = (d: Pick<Design, "paid">) => !!d.paid && (!d.paid.until || d.paid.until > Date.now());
@@ -200,24 +204,24 @@ async function patchDesign(id: string, f: (d: Design) => Design) {
 }
 
 /** العميل يطلب تفعيل الدفع (حتى ربط بوابة الدفع) */
-export async function requestPayment(id: string, customerId: string, plan: PlanKind = "once") {
+export async function requestPayment(id: string, customerId: string, plan: PlanKind = "once", coupon: RequestedCoupon | null = null) {
   const d = await getDesign(id, customerId);
   if (!d) return null;
   // المسودة المطلوب دفعها تُمدد حتى تُراجع الإدارة الطلب
-  const r = await patchDesign(id, (x) => ({ ...x, paymentRequestedAt: Date.now(), requestedPlan: plan, expiresAt: x.expiresAt ? Math.max(x.expiresAt, Date.now() + DRAFT_DAYS * DAY) : null }));
+  const r = await patchDesign(id, (x) => ({ ...x, paymentRequestedAt: Date.now(), requestedPlan: plan, requestedCoupon: coupon, expiresAt: x.expiresAt ? Math.max(x.expiresAt, Date.now() + DRAFT_DAYS * DAY) : null }));
   await stat("payment_request");
   return r;
 }
 
 /** الإدارة تفعّل الدفع لتصميم: يصبح دائماً ويُفتح التحميل */
-export async function markDesignPaid(id: string, opts: { plan: PlanKind; amount: number; months?: number; by?: string; ref?: string } | null) {
+export async function markDesignPaid(id: string, opts: { plan: PlanKind; amount: number; months?: number; by?: string; ref?: string; coupon?: string } | null) {
   const MONTH = 30.44 * DAY;
   const r = await patchDesign(id, (x) => {
-    if (!opts) return { ...x, paid: null, requestedPlan: null, paymentRequestedAt: null, expiresAt: Date.now() + DRAFT_DAYS * DAY };
+    if (!opts) return { ...x, paid: null, requestedPlan: null, requestedCoupon: null, paymentRequestedAt: null, expiresAt: Date.now() + DRAFT_DAYS * DAY };
     // تجديد الاشتراك الشهري يُضاف لنهاية المدة الحالية إن كانت سارية
     const base = x.paid?.until && x.paid.until > Date.now() && opts.plan === x.paid.plan ? x.paid.until : Date.now();
     const until = opts.months ? base + opts.months * MONTH : null;
-    return { ...x, expiresAt: null, paymentRequestedAt: null, requestedPlan: null, paid: { at: Date.now(), amount: opts.amount, plan: opts.plan, until, by: opts.by, ref: opts.ref } };
+    return { ...x, expiresAt: null, paymentRequestedAt: null, requestedPlan: null, requestedCoupon: null, paid: { at: Date.now(), amount: opts.amount, plan: opts.plan, until, by: opts.by, ref: opts.ref, ...(opts.coupon ? { coupon: opts.coupon } : {}) } };
   });
   if (!r) return null;
   // تفعيل تصميم تجريبي لا يُحسب في الإيراد الحقيقي (أرقام الأمثلة محسوبة مسبقاً وتُحذف معها)
@@ -278,7 +282,7 @@ export async function seedExamples(kind: string, prices: { once: number; monthly
     const ident = phone ? `+9665${String(10000000 + i * 7919).slice(-8)}` : `ex${i + 1}@example.com`;
     const name = EX_PEOPLE[i % EX_PEOPLE.length];
     const title = `${EX_FIRST[(i * 7) % EX_FIRST.length]} ${EX_LAST[(i * 3 + Math.floor(i / 20)) % EX_LAST.length]}`;
-    const paidAt = created + Math.round((1 + rnd(i, 3) * 20) * 3600_000);
+    const paidAt = Math.min(now - 60_000, created + Math.round((1 + rnd(i, 3) * 20) * 3600_000)); // لا يكون الدفع في المستقبل
     let paid: DesignPayment | null = null;
     if (st === "once") paid = { at: paidAt, amount: prices.once, plan: "once", until: onceMonths ? paidAt + onceMonths * MONTH : null, by: "مثال" };
     if (st === "monthly" || st === "churned") paid = { at: paidAt, amount: prices.monthly, plan: "monthly", until: paidAt + MONTH, by: "مثال" };
