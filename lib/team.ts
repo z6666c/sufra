@@ -4,6 +4,7 @@
 // - كلمات المرور مخزنة كبصمة PBKDF2-SHA256 مع ملح عشوائي
 import { kv, kvJson, kvAvailable, kvMemory } from "./kv";
 import { accounts } from "./auth";
+import { parseIdentifier } from "./customers";
 
 const APP = "sufra";
 export type TeamLevel = "manager" | "viewer" | "custom";
@@ -29,6 +30,9 @@ export interface Member {
   username: string;
   name: string;
   level: TeamLevel;
+  /** للتحقق عند الدخول: يوصله رمز على الإيميل أو واتساب */
+  email?: string;
+  phone?: string;
   /** للصلاحيات المخصصة فقط */
   perms?: Perm[];
   salt: string;
@@ -72,33 +76,50 @@ export async function listMembers(): Promise<MemberPublic[]> {
   return rows.filter((m): m is Member => !!m).map(toPublic).sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/** الإيميل والجوال: واحد منهم على الأقل، ويُستخدم لرمز التحقق عند الدخول */
+function cleanContact(email: unknown, phone: unknown, requireOne: boolean) {
+  const out: { email?: string; phone?: string } = {};
+  const e = String(email ?? "").trim(), p = String(phone ?? "").trim();
+  if (e) { const i = parseIdentifier(e); if (i?.type !== "email") throw new Error("الإيميل غير صحيح"); out.email = i.value; }
+  if (p) { const i = parseIdentifier(p); if (i?.type !== "phone") throw new Error("رقم الجوال غير صحيح، اكتبه مثل 05xxxxxxxx"); out.phone = i.value; }
+  if (requireOne && !out.email && !out.phone) throw new Error("أضف إيميل الموظف أو رقم جواله عشان يوصله رمز التحقق عند الدخول");
+  return out;
+}
+
 export function validatePassword(p: string) {
   return typeof p === "string" && p.length >= 8 && p.length <= 128 ? null : "كلمة المرور 8 أحرف على الأقل";
 }
 
-export async function addMember(input: { username: string; name?: string; password: string; level: TeamLevel; perms?: unknown }, by: string) {
+export async function addMember(input: { username: string; name?: string; password: string; level: TeamLevel; perms?: unknown; email?: unknown; phone?: unknown }, by: string) {
   const username = String(input.username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) throw new Error("اسم المستخدم: 3 إلى 32 حرفاً إنجليزياً أو أرقاماً (ويُسمح بـ . _ -)");
   if (accounts().some((a) => a.username === username)) throw new Error("هذا الاسم محجوز لحساب المالك أو الديمو");
   const pe = validatePassword(input.password); if (pe) throw new Error(pe);
   if (await getMember(username)) throw new Error("اسم المستخدم مستخدم من قبل");
+  const contact = cleanContact(input.email, input.phone, true);
   if ((await kv<string[]>("SMEMBERS", SET)).length >= 20) throw new Error("الحد الأقصى 20 عضواً");
   const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
   const m: Member = {
     username, name: String(input.name ?? "").trim().slice(0, 60) || username, level: normLevel(input.level), ...(normLevel(input.level) === "custom" ? { perms: cleanPerms(input.perms) } : {}),
-    salt, hash: await pbkdf2(input.password, salt), v: 1, createdAt: Date.now(), createdBy: by,
+    ...contact, salt, hash: await pbkdf2(input.password, salt), v: 1, createdAt: Date.now(), createdBy: by,
   };
   await kvJson.set(key(username), m);
   await kv("SADD", SET, username);
   return toPublic(m);
 }
 
-export async function updateMember(username: string, p: { name?: string; level?: TeamLevel; perms?: unknown; password?: string; disabled?: boolean }) {
+export async function updateMember(username: string, p: { name?: string; level?: TeamLevel; perms?: unknown; password?: string; disabled?: boolean; email?: unknown; phone?: unknown }) {
   const m = await getMember(username);
   if (!m) return null;
   const next: Member = { ...m };
   let bump = false;
   if (typeof p.name === "string") next.name = p.name.trim().slice(0, 60) || m.username;
+  if (p.email !== undefined || p.phone !== undefined) {
+    const c = cleanContact(p.email !== undefined ? p.email : m.email, p.phone !== undefined ? p.phone : m.phone, true);
+    next.email = c.email; next.phone = c.phone;
+    if (!c.email) delete next.email;
+    if (!c.phone) delete next.phone;
+  }
   if (p.level && p.level !== m.level) { next.level = normLevel(p.level); bump = true; }
   if (next.level === "custom" && p.perms !== undefined) next.perms = cleanPerms(p.perms);
   if (next.level !== "custom") delete next.perms;
@@ -131,6 +152,9 @@ export async function verifyMember(username: string, password: string): Promise<
     return null;
   }
   if (!safeEq(await pbkdf2(password, m.salt), m.hash)) return null;
-  await kvJson.set(key(m.username), { ...m, lastLoginAt: Date.now() });
   return m;
+}
+export async function stampLogin(username: string) {
+  const m = await getMember(username);
+  if (m) await kvJson.set(key(m.username), { ...m, lastLoginAt: Date.now() });
 }

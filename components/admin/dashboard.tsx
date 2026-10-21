@@ -325,7 +325,7 @@ function genPassword() {
   return Array.from(crypto.getRandomValues(new Uint8Array(14)), (x) => a[x % a.length]).join("");
 }
 type Perm = { id: string; label: string; hint: string };
-type Member = { username: string; name: string; level: "manager" | "viewer" | "custom"; perms?: string[]; effective: string[]; disabled?: boolean; createdAt: number; lastLoginAt?: number };
+type Member = { username: string; name: string; email?: string; phone?: string; level: "manager" | "viewer" | "custom"; perms?: string[]; effective: string[]; disabled?: boolean; createdAt: number; lastLoginAt?: number };
 type TeamData = { owner: string; members: Member[]; perms: Perm[]; presets: Record<"manager" | "viewer", string[]> };
 const ROLE_INFO: Record<Member["level"], string> = { manager: "مشرف", viewer: "مشاهد", custom: "مخصص" };
 
@@ -361,11 +361,11 @@ function PermsEditor({ data, level, perms, onChange }: { data: TeamData; level: 
 function TeamTab({ demo = false }: { demo?: boolean }) {
   const [data, setData] = React.useState<TeamData | null>(null);
   const [err, setErr] = React.useState("");
-  const [form, setForm] = React.useState({ username: "", name: "", password: genPassword(), level: "manager" as Member["level"], perms: [] as string[] });
+  const [form, setForm] = React.useState({ username: "", name: "", email: "", phone: "", password: genPassword(), level: "manager" as Member["level"], perms: [] as string[] });
   const [busy, setBusy] = React.useState<string | null>(null);
   const [created, setCreated] = React.useState<{ username: string; password: string } | null>(null);
   const [confirm, setConfirm] = React.useState<string | null>(null);
-  const [edit, setEdit] = React.useState<{ u: string; level: Member["level"]; perms: string[] } | null>(null);
+  const [edit, setEdit] = React.useState<{ u: string; level: Member["level"]; perms: string[]; email: string; phone: string } | null>(null);
   const [ok, setOk] = React.useState("");
   const load = React.useCallback(() => { api<TeamData>("/api/admin/team").then(setData).catch((e) => setErr(e.message)); }, []);
   React.useEffect(() => { load(); }, [load]);
@@ -378,7 +378,7 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
     run("add", async () => {
       await api("/api/admin/team", { method: "POST", body: JSON.stringify(form) });
       setCreated({ username: form.username.trim().toLowerCase(), password: form.password });
-      setForm({ username: "", name: "", password: genPassword(), level: "manager", perms: [] });
+      setForm({ username: "", name: "", email: "", phone: "", password: genPassword(), level: "manager", perms: [] });
     });
   };
   const patch = (u: string, body: object, done = "") => run(u, () => api(`/api/admin/team/${encodeURIComponent(u)}`, { method: "PATCH", body: JSON.stringify(body) }), done);
@@ -409,11 +409,13 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
         <form onSubmit={add} className="space-y-4 rounded-2xl border border-line bg-white p-5">
           <div>
             <h3 className="text-sm font-semibold">إنشاء حساب لعضو في الفريق</h3>
-            <p className="mt-1 text-xs text-muted">اكتب بياناته واختر دوره وصلاحياته، وبعدها أرسل له بيانات الدخول.</p>
+            <p className="mt-1 text-xs text-muted">اكتب بياناته واختر دوره وصلاحياته، وبعدها أرسل له بيانات الدخول. عند كل دخول يوصله <b>رمز تحقق</b> على واتساب (إذا أضفت جواله) أو على إيميله، فلازم تضيف واحد منهم على الأقل.</p>
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <label className="text-xs text-muted">الاسم<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="سارة — المبيعات" className={inp} /></label>
             <label className="text-xs text-muted">اسم المستخدم (إنجليزي)<input required dir="ltr" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="sara" className={inp} /></label>
+            <label className="text-xs text-muted">إيميل الموظف<input type="email" dir="ltr" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="sara@company.sa" className={inp} /></label>
+            <label className="text-xs text-muted">رقم جوال الموظف (واتساب)<input dir="ltr" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="05xxxxxxxx" className={inp + " font-latin"} /></label>
             <label className="text-xs text-muted">كلمة المرور
               <span className="flex gap-1"><input required minLength={8} dir="ltr" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inp + " font-latin"} />
                 <button type="button" onClick={() => setForm({ ...form, password: genPassword() })} className="h-10 shrink-0 rounded-xl border border-line px-2 text-xs">توليد</button></span>
@@ -423,7 +425,7 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
             <div className="mb-2 text-xs font-semibold">الدور والصلاحيات</div>
             <PermsEditor data={data} level={form.level} perms={form.perms} onChange={(level, perms) => setForm({ ...form, level, perms })} />
           </div>
-          <button disabled={busy === "add" || (form.level === "custom" && !form.perms.length && false)} className="h-10 rounded-xl bg-ink px-5 text-sm text-paper">{busy === "add" ? "…" : "إنشاء الحساب"}</button>
+          <button disabled={busy === "add" || (!form.email.trim() && !form.phone.trim())} className="h-10 rounded-xl bg-ink px-5 text-sm text-paper">{busy === "add" ? "…" : "إنشاء الحساب"}</button>
         </form>
       )}
 
@@ -441,7 +443,8 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
             {data?.members.map((m) => (
               <React.Fragment key={m.username}>
                 <tr className="border-b border-line last:border-0">
-                  <td className="p-3"><div className="font-medium">{m.name}</div><div dir="ltr" className="text-right font-latin text-xs text-muted">{m.username}</div></td>
+                  <td className="p-3"><div className="font-medium">{m.name}</div><div dir="ltr" className="text-right font-latin text-xs text-muted">{m.username}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{m.phone ? <span dir="ltr">📱 {m.phone}</span> : null}{m.phone && m.email ? " · " : ""}{m.email ? <span dir="ltr">✉ {m.email}</span> : null}{!m.phone && !m.email && <span className="text-red-600">ما له إيميل أو جوال — ما يقدر يدخل</span>}</div></td>
                   <td className="p-3">
                     <span className="rounded-full bg-ink/5 px-2 py-0.5 text-xs font-semibold">{ROLE_INFO[m.level]}</span>
                     <div className="mt-1 flex flex-wrap gap-1">{m.effective.length ? m.effective.map((p) => <span key={p} className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-800">{permLabel(p)}</span>) : <span className="text-[11px] text-muted">مشاهدة فقط</span>}</div>
@@ -450,7 +453,7 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
                   <td className="p-3 text-xs text-muted">{m.lastLoginAt ? date(m.lastLoginAt) : "لم يدخل بعد"}</td>
                   <td className="p-3 text-left">
                     <span className="inline-flex flex-wrap justify-end gap-1">
-                      <button disabled={busy === m.username} onClick={() => setEdit(edit?.u === m.username ? null : { u: m.username, level: m.level, perms: m.effective })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{edit?.u === m.username ? "إغلاق" : "الصلاحيات"}</button>
+                      <button disabled={busy === m.username} onClick={() => setEdit(edit?.u === m.username ? null : { u: m.username, level: m.level, perms: m.effective, email: m.email ?? "", phone: m.phone ?? "" })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{edit?.u === m.username ? "إغلاق" : "تعديل"}</button>
                       <button disabled={busy === m.username} onClick={() => resetPw(m.username)} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">كلمة مرور جديدة</button>
                       <button disabled={busy === m.username} onClick={() => patch(m.username, { disabled: !m.disabled })} className="rounded-lg border border-line px-2 py-1 text-xs hover:bg-ink/5">{m.disabled ? "تفعيل" : "إيقاف"}</button>
                       {confirm === m.username
@@ -462,9 +465,13 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
                 {edit?.u === m.username && data && (
                   <tr className="border-b border-line bg-paper/60">
                     <td colSpan={5} className="p-4">
+                      <div className="mb-4 grid gap-3 md:grid-cols-2">
+                        <label className="text-xs text-muted">إيميل الموظف<input type="email" dir="ltr" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} className={inp} /></label>
+                        <label className="text-xs text-muted">رقم جوال الموظف (واتساب)<input dir="ltr" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} placeholder="05xxxxxxxx" className={inp + " font-latin"} /></label>
+                      </div>
                       <PermsEditor data={data} level={edit.level} perms={edit.perms} onChange={(level, perms) => setEdit({ ...edit, level, perms })} />
                       <div className="mt-3 flex gap-2">
-                        <button disabled={busy === m.username} onClick={() => { patch(m.username, { level: edit.level, perms: edit.perms }, `تم حفظ صلاحيات ${m.name}.`); setEdit(null); }} className="h-9 rounded-xl bg-ink px-4 text-sm text-paper">حفظ الصلاحيات</button>
+                        <button disabled={busy === m.username} onClick={() => { patch(m.username, { level: edit.level, perms: edit.perms, email: edit.email, phone: edit.phone }, `تم حفظ بيانات وصلاحيات ${m.name}.`); setEdit(null); }} className="h-9 rounded-xl bg-ink px-4 text-sm text-paper">حفظ التعديلات</button>
                         <button onClick={() => setEdit(null)} className="h-9 rounded-xl border border-line px-4 text-sm">إلغاء</button>
                       </div>
                     </td>

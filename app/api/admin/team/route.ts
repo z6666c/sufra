@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   if (g instanceof Response) return g;
   const body = await req.json().catch(() => ({}));
   try {
-    return json({ member: await addMember({ username: body.username, name: body.name, password: body.password, level: body.level, perms: body.perms }, g.u) });
+    return json({ member: await addMember({ username: body.username, name: body.name, password: body.password, level: body.level, perms: body.perms, email: body.email, phone: body.phone }, g.u) });
   } catch (e) {
     return json({ error: (e as Error).message }, 400);
   }

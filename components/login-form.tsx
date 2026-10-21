@@ -6,17 +6,21 @@ export function LoginForm({ demo, next, status }: { demo: { username: string; pa
   const [password, setP] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [otp, setOtp] = React.useState<{ to: string; via?: string; devCode?: string } | null>(null);
+  const [code, setCode] = React.useState("");
   const enterDemo = () => {
     // الديمو العام لا يحتاج جلسة: الزائر يُعامل كحساب ديمو تلقائياً
     if (status.publicDemo) { window.location.href = "/"; return; }
     if (demo) login(demo.username, demo.password);
   };
-  const login = async (u = username, p = password) => {
+  const login = async (u = username, p = password, c?: string) => {
     setBusy(true); setError(null);
     try {
-      const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u, password: p }) });
+      const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u, password: p, ...(c ? { code: c } : {}) }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error ?? "تعذر الدخول");
+      // حسابات الفريق: خطوة ثانية برمز التحقق
+      if (d.otp) { setOtp({ to: d.to, via: d.via, devCode: d.devCode }); setCode(""); setBusy(false); return; }
       window.location.href = d.role === "admin" && next === "/" ? "/" : next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذر الدخول");
@@ -25,6 +29,20 @@ export function LoginForm({ demo, next, status }: { demo: { username: string; pa
   };
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-4">
+      {otp ? (
+        <form onSubmit={(e) => { e.preventDefault(); login(username, password, code); }} className="w-full max-w-sm rounded-2xl border border-line bg-white p-7 shadow-sm">
+          <div className="mb-1 font-display text-2xl font-bold">رمز التحقق</div>
+          <p className="mb-5 text-sm leading-relaxed text-muted">أرسلنا رمز من 6 أرقام {otp.via === "whatsapp" ? "على واتساب إلى" : otp.via === "sms" ? "برسالة إلى" : "إلى"} <b dir="ltr">{otp.to}</b></p>
+          {otp.devCode && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">وضع التجربة: الرمز <b dir="ltr">{otp.devCode}</b></p>}
+          <input autoFocus inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/[^\d٠-٩]/g, ""))} placeholder="••••••" className="mb-4 h-12 w-full rounded-xl border border-line px-3.5 text-center font-latin text-xl tracking-[0.5em] outline-none focus:border-ink/40" />
+          {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+          <button disabled={busy || code.length !== 6} className="h-11 w-full rounded-xl bg-ink font-medium text-paper disabled:opacity-50">{busy ? "..." : "تأكيد والدخول"}</button>
+          <div className="mt-3 flex justify-between text-xs">
+            <button type="button" onClick={() => { setOtp(null); setError(null); }} className="text-muted hover:text-ink">رجوع</button>
+            <button type="button" disabled={busy} onClick={() => login()} className="text-muted hover:text-ink">إعادة إرسال الرمز</button>
+          </div>
+        </form>
+      ) : (
       <form onSubmit={(e) => { e.preventDefault(); login(); }} className="w-full max-w-sm rounded-2xl border border-line bg-white p-7 shadow-sm">
         <div className="mb-1 font-display text-2xl font-bold">سُفرة</div>
         <p className="mb-6 text-sm text-muted">سجّل الدخول للمتابعة</p>
@@ -53,6 +71,7 @@ export function LoginForm({ demo, next, status }: { demo: { username: string; pa
           </div>
         )}
       </form>
+      )}
     </main>
   );
 }
