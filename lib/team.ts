@@ -154,6 +154,24 @@ export async function verifyMember(username: string, password: string): Promise<
   if (!safeEq(await pbkdf2(password, m.salt), m.hash)) return null;
   return m;
 }
+// ── تحقق المالك (حساب الإدارة من البيئة): إيميله وجواله لرمز الدخول ──
+// من متغيرات البيئة ADMIN_EMAIL / ADMIN_PHONE، أو من لوحة التحكم ← الفريق
+const OWNER_KEY = `${APP}:owner-contact`;
+export interface OwnerContact { email?: string; phone?: string; at?: number }
+export async function getOwnerContact(): Promise<OwnerContact & { fromEnv: boolean }> {
+  const env = cleanContact(process.env.ADMIN_EMAIL, process.env.ADMIN_PHONE, false);
+  if (env.email || env.phone) return { ...env, fromEnv: true };
+  const v = kvAvailable() ? await kvJson.get<OwnerContact>(OWNER_KEY).catch(() => null) : null;
+  return { email: v?.email, phone: v?.phone, at: v?.at, fromEnv: false };
+}
+export async function setOwnerContact(email: unknown, phone: unknown) {
+  const c = cleanContact(email, phone, false);
+  if (!c.email && !c.phone) { await kv("DEL", OWNER_KEY); return {}; }
+  const v: OwnerContact = { ...c, at: Date.now() };
+  await kvJson.set(OWNER_KEY, v);
+  return v;
+}
+
 export async function stampLogin(username: string) {
   const m = await getMember(username);
   if (m) await kvJson.set(key(m.username), { ...m, lastLoginAt: Date.now() });

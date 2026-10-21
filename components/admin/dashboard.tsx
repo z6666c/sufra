@@ -358,6 +358,43 @@ function PermsEditor({ data, level, perms, onChange }: { data: TeamData; level: 
   );
 }
 
+type OwnerC = { email?: string; phone?: string; fromEnv: boolean; active: boolean; canEmail: boolean; canPhone: boolean };
+function OwnerVerify({ onChange }: { onChange?: () => void }) {
+  const [c, setC] = React.useState<OwnerC | null>(null);
+  const [f, setF] = React.useState({ email: "", phone: "" });
+  const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { api<OwnerC>("/api/admin/owner-contact").then((d) => { setC(d); setF({ email: d.email ?? "", phone: d.phone ?? "" }); }).catch(() => {}); }, []);
+  if (!c) return null;
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await api<OwnerC>("/api/admin/owner-contact", { method: "PUT", body: JSON.stringify(f) });
+      setC(d); onChange?.();
+      setMsg({ ok: true, text: d.active ? "تم. من دخولك الجاي يوصلك رمز تحقق بعد كلمة المرور." : d.email || d.phone ? "انحفظت بياناتك، لكن الرمز ما يقدر يوصل لين تربط الإيميل أو واتساب في إعدادات الخادم." : "أوقفت التحقق بخطوتين لحسابك." });
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+  };
+  const inp = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-ink/40 disabled:bg-paper";
+  return (
+    <section className={`rounded-2xl border p-5 ${c.active ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">التحقق عند دخولك (المالك)</h3>
+        {c.active ? <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">مفعّل</span> : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">غير مفعّل</span>}
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-muted">بعد كلمة المرور يوصلك رمز من 6 أرقام على واتساب (إذا أضفت جوالك) أو على إيميلك. حتى لو انكشفت كلمة مرورك، ما أحد يقدر يدخل بدون الرمز.</p>
+      {c.fromEnv ? <p className="mt-3 text-xs">بياناتك مضبوطة من إعدادات الخادم (<span dir="ltr" className="font-latin">ADMIN_EMAIL / ADMIN_PHONE</span>): {c.phone && <span dir="ltr">{c.phone}</span>} {c.email && <span dir="ltr">{c.email}</span>}</p> : (
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <label className="text-xs text-muted">إيميلك<input type="email" dir="ltr" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="you@company.sa" className={inp} /></label>
+          <label className="text-xs text-muted">رقم جوالك (واتساب)<input dir="ltr" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="05xxxxxxxx" className={inp + " font-latin"} /></label>
+          <button disabled={busy} onClick={save} className="h-10 rounded-xl bg-ink px-4 text-sm text-paper">{busy ? "…" : "حفظ"}</button>
+        </div>
+      )}
+      {!c.active && (c.email || c.phone) && <p className="mt-2 text-xs text-amber-800">الرمز ما يقدر يوصل الحين: {!c.canEmail && c.email ? "الإيميل ما انربط (RESEND_API_KEY). " : ""}{!c.canPhone && c.phone ? "واتساب ما انربط (WHATSAPP_TOKEN). " : ""}لين تربطه تدخل بكلمة المرور بس.</p>}
+      {msg && <div className={`mt-3 rounded-xl px-4 py-2.5 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-amber-50 text-amber-900"}`}>{msg.text}</div>}
+    </section>
+  );
+}
+
 function TeamTab({ demo = false }: { demo?: boolean }) {
   const [data, setData] = React.useState<TeamData | null>(null);
   const [err, setErr] = React.useState("");
@@ -395,6 +432,7 @@ function TeamTab({ demo = false }: { demo?: boolean }) {
         <b>الملكية لك وحدك:</b> حسابك (المالك) ثابت من إعدادات الخادم ولا يقدر أحد يعدّله أو يحذفه. أي تغيير في دور العضو أو كلمة مروره أو إيقافه يُخرجه من جلسته فوراً.
       </div>
       {demo && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900"><b>وضع العرض:</b> تقدر تجرّب إنشاء الحسابات وتحديد الصلاحيات هنا، لكنها مؤقتة وما يقدر العضو يسجل دخول فيها لين تربط Upstash Redis.</div>}
+      {!demo && <OwnerVerify />}
       {err && <Problem text={err} />}
       {ok && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{ok}</div>}
       {created && (
@@ -899,6 +937,8 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
   const [prices, setPrices] = React.useState({ once: DEFAULT_PLANS.once.price, monthly: DEFAULT_PLANS.monthly.price });
   React.useEffect(() => { if (kvReady) api<{ current: { once: number; monthly: number } }>("/api/admin/pricing").then((d) => setPrices(d.current)).catch(() => {}); }, [kvReady]);
   const [ver, setVer] = React.useState(0);
+  const [ownerOk, setOwnerOk] = React.useState(true);
+  React.useEffect(() => { if (me.owner && kvReady && !demoStore) api<{ active: boolean }>("/api/admin/owner-contact").then((d) => setOwnerOk(d.active)).catch(() => {}); }, [me.owner, kvReady, demoStore, ver]);
   const [examples, setExamples] = React.useState<boolean | null>(null);
   const [exBusy, setExBusy] = React.useState(false);
   React.useEffect(() => { if (kvReady) api<{ exists: boolean }>("/api/admin/examples").then((d) => setExamples(d.exists)).catch(() => {}); }, [kvReady]);
@@ -935,6 +975,12 @@ export function AdminDashboard({ brand, settings, extraTabs = [], kvReady, demoS
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
           <b>وضع العرض:</b> قاعدة البيانات غير مربوطة بعد، فاللوحة تعرض 100 عميل تجريبي محفوظين مؤقتاً في ذاكرة الخادم لتشوف كيف تعمل كل الأقسام. تقدر تجرّب التفعيل والتجديد والحذف، لكن التغييرات قد ترجع لوضعها الأول عند إعادة تشغيل الخادم.
           تسجيل العملاء الحقيقيين متوقف حتى تربط Upstash Redis من Vercel ← Storage، وبعدها تُحذف هذه الأمثلة تلقائياً من العرض.
+        </div>
+      )}
+      {me.owner && !ownerOk && tab !== "team" && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+          <span>🔒 احمِ حسابك: فعّل رمز التحقق عند الدخول على جوالك أو إيميلك.</span>
+          <button onClick={() => setTab("team")} className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white">فعّله الآن</button>
         </div>
       )}
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
