@@ -1,6 +1,7 @@
 "use client";
 import { AccountModals } from "./account/account-modals";
 import { AccountBar, DemoNotice } from "./account-bar";
+import { storeApp } from "@/lib/native";
 import * as React from "react";
 import { useMenu } from "@/store/menu-store";
 import { Onboarding } from "./onboarding";
@@ -40,7 +41,7 @@ export default function SufraApp() {
           <div className="mr-auto"><AccountBar /></div>
         </div>
       </header>
-      <DemoNotice text="أنت في الديمو: المعاينة مجانية بعلامة مائية، والتحميل والنشر بعد اختيار الباقة." />
+      <DemoNotice text={storeApp() ? "أنت في وضع التجربة: صمّم وعاين بحرية، وسجّل لحفظ تصاميمك." : "أنت في الديمو: المعاينة مجانية بعلامة مائية، والتحميل والنشر بعد اختيار الباقة."} />
       {mounted && (stage === "studio" && doc ? <Studio /> : <Onboarding />)}
       <ExportStage />
       <ExportOverlay />

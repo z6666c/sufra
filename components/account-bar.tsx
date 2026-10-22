@@ -2,6 +2,7 @@
 // شريط الحساب: عميل (تصاميمي) / زائر ديمو (سجّل مجاناً) / إدارة
 import * as React from "react";
 import { openDesigns, openSignup, refreshAccount, useAccount } from "./account/account-client";
+import { storeApp } from "@/lib/native";
 
 export function AccountBar() {
   const { me } = useAccount();
@@ -27,7 +28,7 @@ export function AccountBar() {
         <a href="/admin" className="rounded-full bg-ink px-2.5 py-1 font-semibold text-paper">لوحة الإدارة</a>
       )}
       {me.guest ? (
-        <a href="/login" className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">الإدارة</a>
+        storeApp() ? null : <a href="/login" className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">الإدارة</a>
       ) : (
         <button onClick={logout} className="rounded-full px-2 py-1 text-muted hover:bg-ink/5 hover:text-ink">خروج</button>
       )}

@@ -61,7 +61,7 @@ function SignupModal({ reason }: { reason?: string }) {
   return (
     <Shell title="سجّل دخولك" onClose={() => closeSignup(false)}>
       <p className="mb-4 text-sm leading-relaxed text-muted">
-        {reason ? `${reason} ` : ""}سجّل ببريدك أو رقم جوالك لحفظ تصميمك وإتمام الشراء. {PREVIEW_NOTE}
+        {reason ? `${reason} ` : ""}{storeApp() ? "سجّل ببريدك أو رقم جوالك لحفظ تصاميمك والرجوع لها من أي جهاز." : <>سجّل ببريدك أو رقم جوالك لحفظ تصميمك وإتمام الشراء. {PREVIEW_NOTE}</>}
       </p>
       {step === "id" ? (
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="space-y-3">
@@ -112,7 +112,7 @@ function DesignsModal({ onOpen }: { onOpen: (d: DesignMeta) => Promise<void> | v
                   <div className="truncate text-sm font-semibold">{d.title}</div>
                   <div className={`text-[11px] ${!designPaid(d) && left !== null && left <= 2 ? "text-red-600" : "text-muted"}`}>
                     {designPaid(d)
-                      ? <span className="font-semibold text-emerald-700">مدفوع{d.paid?.plan === "monthly" ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}` : ""}</span>
+                      ? <span className="font-semibold text-emerald-700">{storeApp() ? "مفعّل" : "مدفوع"}{d.paid?.plan === "monthly" && !storeApp() ? " · اشتراك شهري" : ""}{d.paid?.until ? ` حتى ${new Date(d.paid.until).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}` : ""}</span>
                       : d.paymentRequestedAt && !storeApp() ? <span className="font-semibold text-amber-700">بانتظار تفعيل الدفع</span>
                       : <>معاينة — {left === null ? "" : `تُحذف المسودة بعد ${left} يوم`}</>}
                     {" "}· آخر تعديل {new Date(d.updatedAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}
