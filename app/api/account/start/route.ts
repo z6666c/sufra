@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const ident = parseIdentifier(String(body.identifier ?? ""));
   if (!ident) return json({ error: "اكتب بريداً صحيحاً أو رقم جوال مثل 05xxxxxxxx" }, 400);
-  if (!canSend(ident.type)) {
+  const review = !!process.env.APP_REVIEW_EMAIL && ident.type === "email" && ident.value === process.env.APP_REVIEW_EMAIL.trim().toLowerCase();
+  if (!canSend(ident.type) && !review) {
     return json({ error: ident.type === "email" ? "التسجيل بالبريد غير مفعّل بعد على الخادم" : "التسجيل بالجوال (واتساب) غير مفعّل بعد، استخدم البريد الإلكتروني" }, 503);
   }
   try {

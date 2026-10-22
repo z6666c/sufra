@@ -77,7 +77,13 @@ async function sendWhatsApp(to: string, code: string) {
 interface OtpRec { h: string; tries: number; sentAt: number }
 
 export type OtpVia = "email" | "whatsapp" | "sms";
+/** حساب مراجعة المتاجر (آبل وقوقل): إيميل واحد برمز ثابت من متغيرات البيئة — ما ينرسل له شي */
+const reviewAccount = (ident: Ident) => {
+  const e = process.env.APP_REVIEW_EMAIL?.trim().toLowerCase(), c = process.env.APP_REVIEW_CODE?.trim();
+  return !!e && !!c && /^\d{6}$/.test(c) && ident.type === "email" && ident.value === e;
+};
 export async function startOtp(ident: Ident): Promise<{ devCode?: string; via: OtpVia }> {
+  if (reviewAccount(ident)) return { via: "email" };
   const prev = await kvJson.get<OtpRec>(key(ident.value));
   if (prev && Date.now() - prev.sentAt < COOLDOWN) throw new Error("COOLDOWN");
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
@@ -105,6 +111,7 @@ export async function startOtp(ident: Ident): Promise<{ devCode?: string; via: O
 }
 
 export async function verifyOtp(ident: Ident, code: string): Promise<"ok" | "invalid" | "expired" | "locked"> {
+  if (reviewAccount(ident)) return code.trim() === process.env.APP_REVIEW_CODE!.trim() ? "ok" : "invalid";
   const rec = await kvJson.get<OtpRec>(key(ident.value));
   if (!rec) return "expired";
   if (rec.tries >= MAX_TRIES) return "locked";
